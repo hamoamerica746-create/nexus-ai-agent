@@ -32,7 +32,8 @@ const mock = http.createServer((req, res) => {
   req.on('end', () => {
     const payload = JSON.parse(body);
     const isAgent = payload.messages?.some(
-      (m) => typeof m.content === 'string' && m.content.includes('بروتوكول تنفيذ الأوامر')
+      (m) => typeof m.content === 'string' &&
+        (m.content.includes('بروتوكول استدعاء الأدوات') || m.content.includes('web_search'))
     );
     const flow = isAgent ? 'agent' : 'chat';
     /* نتيجة الأداة الحقيقية تكون آخر رسالة؛ الـ system prompt الأول يحوي المثال نصاً */
@@ -77,6 +78,7 @@ const app = spawn('node', [SERVER], {
     UPSTREAM_URL: `http://127.0.0.1:${MOCK_PORT}/v1/chat/completions`,
     AGENT_WORKSPACE: WORKSPACE,
     PORT: String(APP_PORT),
+    NEXUS_MIN_INTERVAL: '50',
   },
   stdio: ['ignore', 'pipe', 'pipe'],
 });

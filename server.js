@@ -48,8 +48,28 @@ const MAX_OUTPUT = 14000;
 const EXEC_TIMEOUT = 30000;
 const AGENT_MAX_STEPS = 6;
 const NVIDIA_MAX_RETRIES = 3;
+/* حد NVIDIA ≈ 40 طلب/دقيقة — نبقي فاصلاً آمناً بين كل طلبين (≈37 طلب/دقيقة كحد أقصى) */
+const MIN_UPSTREAM_INTERVAL = Number(process.env.NEXUS_MIN_INTERVAL) || 1600;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/* بوابة عمومية تُسلسل كل طلبات NVIDIA وتفرض حداً أدنى للفاصل الزمني بينها */
+let upstreamChain = Promise.resolve();
+let lastUpstreamAt = 0;
+function throttleUpstream(externalSignal) {
+  const run = upstreamChain.then(async () => {
+    if (externalSignal?.aborted) {
+      const err = new Error('Aborted');
+      err.name = 'AbortError';
+      throw err;
+    }
+    const wait = MIN_UPSTREAM_INTERVAL - (Date.now() - lastUpstreamAt);
+    if (wait > 0) await sleep(wait);
+    lastUpstreamAt = Date.now();
+  });
+  upstreamChain = run.catch(() => {}); // السلسلة لا تنكسر بسبب إلغاء مستخدم واحد
+  return run;
+}
 
 /* ===================== استدعاء NVIDIA مع إعادة محاولة تلقائية ===================== */
 async function fetchNvidiaWithRetry(payload, externalSignal, onRetry = null) {
@@ -61,6 +81,7 @@ async function fetchNvidiaWithRetry(payload, externalSignal, onRetry = null) {
       err.name = 'AbortError';
       throw err;
     }
+    await throttleUpstream(externalSignal);
 
     const controller = new AbortController();
     const onAbort = () => controller.abort();
@@ -180,9 +201,124 @@ function runCommand(sessionId, command, timeoutMs = EXEC_TIMEOUT) {
   });
 }
 
+/* ===================== البحث في الويب ===================== */
+const SEARCH_UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
+
+function decodeEntities(s) {
+  return String(s)
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&nbsp;/g, ' ')
+    .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCodePoint(parseInt(n, 16)));
+}
+const stripTags = (s) => decodeEntities(String(s).replace(/<[^>]*>/g, ' ')).replace(/\s+/g, ' ').trim();
+
+function unwrapDdgUrl(href) {
+  const m = href.match(/[?&]uddg=([^&]+)/);
+  return m ? decodeURIComponent(m[1]) : (href.startsWith('//') ? `https:${href}` : href);
+}
+
+/* محلل HTML لنتائج DuckDuckGo — مُصدَّر للاختبارات */
+export function parseSearchHtml(html) {
+  const results = [];
+  const titleRe = /<a[^>]+class="[^"]*result__a[^"]*"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g;
+  const snipRe = /<(?:a|div|span)[^>]+class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)<\/(?:a|div|span)>/g;
+  const snippets = [];
+  let sm;
+  while ((sm = snipRe.exec(html)) !== null) snippets.push(stripTags(sm[1]));
+  let tm;
+  while ((tm = titleRe.exec(html)) !== null) {
+    const url = unwrapDdgUrl(tm[1]);
+    const title = stripTags(tm[2]);
+    if (title && url.startsWith('http')) results.push({ title, url, snippet: snippets[results.length] || '' });
+  }
+  /* صيغة lite الاحتياطية: روابط مباشرة في جدول */
+  if (results.length === 0) {
+    const liteRe = /<a[^>]+rel="nofollow"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g;
+    let lm;
+    while ((lm = liteRe.exec(html)) !== null) {
+      const url = unwrapDdgUrl(lm[1]);
+      const title = stripTags(lm[2]);
+      if (title && url.startsWith('http') && !results.some((r) => r.url === url)) {
+        results.push({ title, url, snippet: '' });
+      }
+    }
+  }
+  return results.slice(0, 6);
+}
+
+async function ddgSearch(query) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 9000);
+  try {
+    const r = await fetch(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`, {
+      signal: ctrl.signal,
+      headers: { 'User-Agent': SEARCH_UA, Accept: 'text/html', 'Accept-Language': 'ar,en;q=0.8' },
+    });
+    if (!r.ok) throw new Error(`DDG ${r.status}`);
+    const results = parseSearchHtml(await r.text());
+    if (!results.length) throw new Error('نتائج فارغة');
+    return { source: 'duckduckgo', query, results };
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+async function braveSearch(query) {
+  const r = await fetch(`https://api.search.brave.com/res/v1/web/search?count=6&q=${encodeURIComponent(query)}`, {
+    signal: AbortSignal.timeout(9000),
+    headers: { 'X-Subscription-Token': process.env.BRAVE_API_KEY, Accept: 'application/json' },
+  });
+  if (!r.ok) throw new Error(`Brave ${r.status}`);
+  const data = await r.json();
+  return {
+    source: 'brave', query,
+    results: (data.web?.results || []).slice(0, 6).map((x) => ({
+      title: x.title, url: x.url, snippet: x.description || '',
+    })),
+  };
+}
+
+async function tavilySearch(query) {
+  const r = await fetch('https://api.tavily.com/search', {
+    method: 'POST',
+    signal: AbortSignal.timeout(9000),
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ api_key: process.env.TAVILY_API_KEY, query, max_results: 6, search_depth: 'basic' }),
+  });
+  if (!r.ok) throw new Error(`Tavily ${r.status}`);
+  const data = await r.json();
+  return {
+    source: 'tavily', query,
+    results: (data.results || []).map((x) => ({ title: x.title, url: x.url, snippet: x.content || '' })),
+  };
+}
+
+async function webSearch(query) {
+  if (process.env.BRAVE_API_KEY) {
+    try { return await braveSearch(query); } catch { /* يسقط للتالي */ }
+  }
+  if (process.env.TAVILY_API_KEY) {
+    try { return await tavilySearch(query); } catch { /* يسقط للتالي */ }
+  }
+  return ddgSearch(query);
+}
+
+app.get('/api/search', async (req, res) => {
+  const q = String(req.query.q || '').trim().slice(0, 300);
+  if (q.length < 2) return res.status(400).json({ error: 'كلمة البحث مطلوبة.' });
+  try {
+    const out = await webSearch(q);
+    if (!out.results.length) return res.status(502).json({ error: 'لا توجد نتائج.' });
+    res.json(out);
+  } catch (err) {
+    res.status(502).json({ error: 'فشل البحث في الويب.', detail: String(err.message || err) });
+  }
+});
+
 /* ===================== Health & Models ===================== */
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, service: 'NEXUS AI Agent', keyConfigured: Boolean(API_KEY), workspace: WORKSPACE });
+  res.json({ ok: true, service: 'NEXUS AI Agent', keyConfigured: Boolean(API_KEY), workspace: WORKSPACE, search: true });
 });
 
 app.get('/api/models', (_req, res) => {
@@ -266,100 +402,163 @@ app.post('/api/chat', async (req, res) => {
 
 /* ===================== الوكيل الذكي (Agent Loop) ===================== */
 const AGENT_SYSTEM = (cwd) => `أنت NEXUS، وكيل ذكاء اصطناعي لديك صلاحيات وصول لجهاز كمبيوتر حقيقي يعمل بنظام Linux داخل بيئة آمنة.
-لديك أداة واحدة اسمها run_command تنفذ أوامر bash في جلسة ثابتة (مجلد العمل الحالي محفوظ بين الأوامر).
-البيئة مثبت عليها: python3 و node و npm و git و curl وأدوات Linux الأساسية.
+لديك أداتان فقط:
+• run_command — تنفذ أوامر bash في جلسة ثابتة (مجلد العمل محفوظ بين الأوامر). البيئة عليها python3 و node و npm و git و curl وأدوات Linux.
+• web_search — تبحث في الويب وتعيد نتائج حقيقية (عنوان، رابط، مقتطف) لتلخّصها للمستخدم.
 مجلد العمل الحالي: ${cwd}
 
-بروتوكول تنفيذ الأوامر (التزم به حرفياً):
-1. عندما تحتاج لتنفيذ أمر، أخرج كتلة مستقلة بهذا الشكل بالضبط، بدون أي نص آخر داخلها:
+متى تستخدم web_search (مهم جداً — ميّز نية السؤال):
+• استخدمها فقط عندما يحتاج السؤال معلومات حديثة أو من الإنترنت: أخبار، أسعار، إصدارات برمجيات حديثة، أحداث جارية، مواقع رسمية، إحصائيات متغيرة، أو معلومات حالية عن شخصية أو شركة.
+• لا تستخدمها في: المعرفة العامة، الشرح، البرمجة، الرياضيات، الكتابة، تلخيص نص أُرسل لك، أو المحادثة العادية — أجب عنها مباشرة بدون بحث.
+• ابحث مرة واحدة بسؤال مركز، وابنِ إجابتك من النتائج مع ذكر المصادر كروابط، وإن لم تجد نتائج كافية قل ذلك بصراحة.
+
+بروتوكول استدعاء الأدوات (التزم به حرفياً):
+1. كل استدعاء يخرج كتلة مستقلة بهذا الشكل بالضبط، بدون أي نص آخر داخلها:
 <tool_call>
-{"name":"run_command","arguments":{"command":"python3 script.py"}}
+{\"name\":\"run_command\",\"arguments\":{\"command\":\"python3 script.py\"}}
 </tool_call>
-2. الصيغ البديلة المقبولة أيضاً إذا تعذّرت الصيغة الأولى:
-   أ) كتلة كود بهذا الشكل (ثلاث علامات اقتباس ثم run_command ثم الأمر):
-   \`\`\`run_command
-   ls -la
-   \`\`\`
-   ب) JSON خالٍ: {"name":"run_command","arguments":{"command":"pwd"}}
-3. لا تكتب أوامر bash خام في النص العادي إذا كنت تريد تنفيذها — كل أمر تريد تشغيله لازم يكون داخل إحدى الصيغ أعلاه.
-4. انتظر نتيجة التنفيذ التي ستصل لك في وسم <tool_result> ثم قرر: إما أمر آخر، أو الإجابة النهائية.
-5. نظّم الحل: أنشئ ملفات بالـ heredoc أو python3، نفذ، اختبر، ثم لخّص النتيجة للمستخدم.
-6. لا تختلق مخرجات الأوامر — اعتمد فقط على ما يصلك في <tool_result>.
-7. اكتب إجاباتك النهائية بالعربية وبأسلوب Markdown منظم، واذكر الملفات والأوامر المهمة.
-8. الحد الأقصى ${AGENT_MAX_STEPS} خطوات تنفيذ — أنهِ المهمة بكفاءة.
+   أو للبحث في الويب:
+<tool_call>
+{\"name\":\"web_search\",\"arguments\":{\"query\":\"أحدث إصدار Node.js 2026\"}}
+</tool_call>
+2. الصيغ البديلة المقبولة أيضاً: كتلة \`\`\`run_command فيها الأمر مباشرة، أو JSON خالٍ بنفس البنية، أو مصفوفة JSON من هذه الكائنات.
+3. ممنوع منعاً باتاً إخراج رموز غريبة مثل ]<]minimax[> أو أي JSON خام خارج الوسوم أعلاه — الكلام العادي للبشر، والوسوم فقط للأدوات.
+4. لا تكتب أوامر bash خام في النص العادي إذا كنت تريد تنفيذها — كل أمر تريد تشغيله لازم يكون داخل إحدى الصيغ أعلاه.
+5. انتظر نتيجة التنفيذ التي ستصل لك في وسم <tool_result> ثم قرر: إما استدعاء آخر، أو الإجابة النهائية.
+6. لا تختلق مخرجات الأوامر أو نتائج البحث — اعتمد فقط على ما يصلك في <tool_result>.
+7. اكتب إجاباتك النهائية بالعربية وبأسلوب Markdown منظم، واذكر الملفات والأوامر والروابط المهمة.
+
+ترشيد الاستدعاءات (الخدمة محدودة بـ 40 طلباً في الدقيقة):
+• اجمع كل أوامر bash المتعلقة بمهمة واحدة في استدعاء واحد طويل متعدد الأسطر (&& و heredoc) بدل تقسيمها لطلبات صغيرة.
+• أنشئ الملفات كاملة في استدعاء واحد، واختبرها في استدعاء تالٍ فقط عند اللزوم — لا تكرر المحاولات إلا بعد فشل حقيقي.
+• الحد الأقصى ${AGENT_MAX_STEPS} خطوات تنفيذ — أنهِ المهمة بأقل عدد ممكن منها.
 
 مثال صحيح لطلب "أنشئ ملفاً واعرضه":
 <tool_call>
-{"name":"run_command","arguments":{"command":"printf 'مرحبا' > hello.txt && cat hello.txt"}}
+{\"name\":\"run_command\",\"arguments\":{\"command\":\"printf 'مرحبا' > hello.txt && cat hello.txt\"}}
 </tool_call>`;
 
 /* محلّل مرن لاستدعاءات الأدوات يفهم عدة صيغ يلجأ إليها الموديل */
+/* رموز MiniMax الخاصة التي يسرّبها الموديل أحياناً حول استدعاءات الأدوات، مثل ]<]minimax[> */
+const MINIMAX_MARKER_RE = /\]\<\][A-Za-z0-9._-]*\[\>/g;
+const TOOL_NAME_RE = /"(?:run_command|web_search)"/;
+
+/* يستخرج كل كتل JSON المتوازنة (كائنات {…} ومصفوفات […]) من نص مختلط، متجاهلاً الفواصل المبتورة */
+function extractJsonBlocks(text) {
+  const blocks = [];
+  for (let i = 0; i < text.length; i++) {
+    const open = text[i];
+    if (open !== '{' && open !== '[') continue;
+    const close = open === '{' ? '}' : ']';
+    let depth = 0, inStr = false, esc = false;
+    for (let j = i; j < text.length; j++) {
+      const c = text[j];
+      if (inStr) {
+        if (esc) esc = false;
+        else if (c === '\\') esc = true;
+        else if (c === '"') inStr = false;
+      } else if (c === '"') inStr = true;
+      else if (c === open) depth++;
+      else if (c === close) {
+        depth--;
+        if (depth === 0) { blocks.push(text.slice(i, j + 1)); i = j; break; }
+      }
+    }
+  }
+  return blocks;
+}
+
+/* يحوّل كائناً واحداً لاستدعاء أداة موحّد، أو null إن لم يكن استدعاءً صالحاً */
+function callFromObject(obj) {
+  if (!obj || typeof obj !== 'object') return null;
+  if (obj.name === 'run_command') {
+    const command = obj.arguments?.command ?? obj.command;
+    if (typeof command === 'string' && command.trim()) return { name: 'run_command', command: command.trim() };
+  }
+  if (obj.name === 'web_search') {
+    const query = obj.arguments?.query ?? obj.query ?? obj.arguments?.q;
+    if (typeof query === 'string' && query.trim()) return { name: 'web_search', query: query.trim() };
+  }
+  return null;
+}
+
+/* انتشال يدوي لقيمة حقل نصية من JSON مكسور/مبتور — يقبل أيضاً السلسلة المفتوحة بلا علامة إغلاق */
+function salvageString(raw, key) {
+  const m = raw.match(new RegExp(`"${key}"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)"?`));
+  if (!m) return null;
+  try { return JSON.parse(`"${m[1]}"`); }
+  catch { return m[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\'); }
+}
+
 export function parseToolCalls(content) {
   const calls = [];
   const seen = new Set();
-  const push = (command) => {
+  const pushCall = (call) => {
+    if (!call) return;
+    const key = call.name === 'web_search' ? `web:${call.query}` : `cmd:${call.command}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    calls.push(call);
+  };
+  const pushCommand = (command) => {
     const cmd = String(command || '').trim();
-    if (!cmd || seen.has(cmd)) return;
-    seen.add(cmd);
-    calls.push({ name: 'run_command', command: cmd });
+    if (cmd) pushCall({ name: 'run_command', command: cmd });
   };
 
-  /* محاولة JSON مع fallback لاستخراج قيادة command حتى من JSON مكسور */
+  /* محاولة JSON مع fallback لاستخراج القيادة حتى من JSON مكسور */
   const tryJson = (raw) => {
     try {
-      const obj = JSON.parse(raw);
-      if (obj?.name === 'run_command' && typeof obj.arguments?.command === 'string') return obj.arguments.command;
-      if (obj?.name === 'run_command' && typeof obj.command === 'string') return obj.command;
+      const parsed = JSON.parse(raw);
+      const list = Array.isArray(parsed) ? parsed : [parsed];
+      for (const obj of list) {
+        const call = callFromObject(obj);
+        if (call) pushCall(call);
+      }
+      if (list.some((o) => callFromObject(o))) return true;
     } catch { /* نكمل لاستخراج يدوي */ }
-    const m = raw.match(/"command"\s*:\s*"((?:[^"\\]|\\.)*)"/);
-    if (m) {
-      try { return JSON.parse(`"${m[1]}"`); }
-      catch { return m[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\'); }
-    }
-    return null;
+    const cmd = salvageString(raw, 'command');
+    if (cmd) { pushCommand(cmd); return true; }
+    const q = salvageString(raw, 'query');
+    if (q) { pushCall({ name: 'web_search', query: q }); return true; }
+    return false;
   };
 
   let m;
   /* 1) الوسم الرسمي <tool_call>...</tool_call> */
   const tagRe = /<tool_call>\s*([\s\S]*?)\s*<\/tool_call>/g;
-  while ((m = tagRe.exec(content)) !== null) {
-    const cmd = tryJson(m[1]);
-    if (cmd) push(cmd);
-  }
+  while ((m = tagRe.exec(content)) !== null) tryJson(m[1]);
 
   /* 2) كتلة كود مخصصة: ```run_command أو ```tool_call */
   const fenceRe = /```(?:run_command|tool_call|bash-tool)\s*\n([\s\S]*?)```/g;
   while ((m = fenceRe.exec(content)) !== null) {
     const body = m[1].trim();
     if (!body) continue;
-    if (body.startsWith('{')) {
-      const cmd = tryJson(body);
-      if (cmd) push(cmd);
-    } else {
-      push(body);
-    }
+    if (body.startsWith('{') || body.startsWith('[')) tryJson(body);
+    else pushCommand(body);
   }
 
-  /* 3) JSON خالٍ بدون الوسم */
-  if (calls.length === 0) {
-    const bareRe = /\{\s*"name"\s*:\s*"run_command"[\s\S]*?\}/g;
-    while ((m = bareRe.exec(content)) !== null) {
-      const cmd = tryJson(m[0]);
-      if (cmd) push(cmd);
-    }
+  /* 3) صيغة استدعاء دالة عارية: run_command("...") */
+  const fnRe = /run_command\s*\(\s*(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'|(\{[\s\S]*?\}))\s*\)/g;
+  while ((m = fnRe.exec(content)) !== null) {
+    if (m[1] || m[2]) {
+      const lit = m[1] || m[2];
+      try { pushCommand(JSON.parse(`"${lit}"`)); } catch { pushCommand(lit); }
+    } else if (m[3]) tryJson(m[3]);
   }
 
-  /* 4) صيغة استدعاء دالة: run_command("...") أو run_command({...}) */
-  if (calls.length === 0) {
-    const fnRe = /run_command\s*\(\s*(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'|(\{[\s\S]*?\}))\s*\)/g;
-    while ((m = fnRe.exec(content)) !== null) {
-      if (m[1] || m[2]) {
-        const lit = m[1] || m[2];
-        try { push(JSON.parse(`"${lit}"`)); } catch { push(lit); }
-      } else if (m[3]) {
-        const cmd = tryJson(m[3]);
-        if (cmd) push(cmd);
-      }
+  /* 4) الصيغة الخام لـ MiniMax: رموز ]<]minimax[> ومصفوفات/كائنات JSON كاملة أو مبتورة */
+  const stripped = content.replace(MINIMAX_MARKER_RE, '');
+  for (const block of extractJsonBlocks(stripped)) {
+    if (TOOL_NAME_RE.test(block)) tryJson(block);
+  }
+  /* انتشال الكتل المبتورة التي لم تُغلق بعد (تسريب أثناء البث) */
+  if (/[\[{]\s*"name"\s*:\s*"(?:run_command|web_search)"/.test(stripped)) {
+    const danglingRe = /[\[{]\s*"name"\s*:\s*"(run_command|web_search)"[\s\S]*?(?=[؀-ۿ]{3,}|$)/g;
+    while ((m = danglingRe.exec(stripped)) !== null) {
+      const cmd = salvageString(m[0], 'command');
+      const q = salvageString(m[0], 'query');
+      if (cmd) pushCommand(cmd);
+      else if (q) pushCall({ name: 'web_search', query: q });
     }
   }
 
@@ -368,42 +567,57 @@ export function parseToolCalls(content) {
 
 /* يكشف نية استدعاء أداة فشل تحليلها حتى نطلب من الموديل التصحيح */
 function looksLikeToolIntent(content) {
-  return /<tool_call|run_command|tool_call>/.test(content);
+  return /<tool_call|run_command|web_search|tool_call|\]\<\]/.test(content);
 }
 
-/* ينظّف النص الظاهر للمستخدم من أي تسريب لصيغ استدعاء الأداة داخل الكلام العادي */
+/* ينظّف النص الظاهر للمستخدم من أي تسريب لصيغ استدعاء الأدوات داخل الكلام العادي */
 function stripToolText(text) {
   if (!text) return '';
   let out = text
+    /* رموز MiniMax الخاصة مثل ]<]minimax[> */
+    .replace(MINIMAX_MARKER_RE, '')
     /* كتل الوسم الكاملة */
     .replace(/<tool_call>[\s\S]*?<\/tool_call>/g, '')
     /* كتل الأسوار المعرّفة */
     .replace(/```(?:run_command|tool_call|bash-tool)[\s\S]*?```/g, '')
     /* كود مضمن (inline) يحوي JSON الأداة أو استدعاء الدالة */
-    .replace(/`[^`\n]*(?:"run_command"|run_command\s*\()[^`\n]*`/g, '')
-    /* JSON خالٍ مكتمل للأداة في أي موضع */
-    .replace(/\{?\s*"name"\s*:\s*"run_command"\s*,\s*"arguments"\s*:\s*\{[\s\S]*?\}\s*\}?/g, '')
+    .replace(/`[^`\n]*(?:"(?:run_command|web_search)"|run_command\s*\()[^`\n]*`/g, '')
     /* صيغة استدعاء دالة عارية */
     .replace(/run_command\s*\(\s*(?:"(?:[^"\\]|\\.)*"|\{[\s\S]*?\})\s*\)/g, '')
     /* بقايا الوسوم */
     .replace(/<\/?tool_call>/g, '');
 
-  /* جزء JSON أداة مبتور في المقدمة (تسريب البث دائماً في البداية): من القوس حتى أول كلام عربي/سوار/عنوان */
-  out = out.replace(/^\s*\{[\s\S]*?(?=[؀-ۿ]|```|#)/, '');
+  /* كل كتل JSON المتوازنة التي تحوي استدعاءات أدوات (كائنات أو مصفوفات) */
+  for (const block of extractJsonBlocks(out)) {
+    if (TOOL_NAME_RE.test(block)) out = out.split(block).join('');
+  }
+  /* JSON أداة مكتمل بصيغة حرفية احتياطية */
+  out = out
+    .replace(/\{?\s*"name"\s*:\s*"(?:run_command|web_search)"\s*,\s*"arguments"\s*:\s*\{[\s\S]*?\}\s*\}?/g, '')
+    .replace(/\[\s*\]\s*/g, '');
+
+  /* جزء JSON أداة مبتور في المقدمة: من القوس حتى أول كلام عربي/سوار/عنوان */
+  out = out.replace(/^\s*[\[{][\s\S]*?(?=[؀-ۿ]|```|#)/, '');
 
   /* فراغات زائدة */
   out = out.replace(/[ \t]{2,}/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
 
   /* كتلة/فاتحة أداة مفتوحة لم تكتمل بعد — نوقف إظهارها حتى يكتمل السياق أثناء البث */
   let cut = -1;
-  for (const marker of ['<tool_call>', '```run_command', '```tool_call', '```bash-tool']) {
+  for (const marker of ['<tool_call>', '```run_command', '```tool_call', '```bash-tool', ']<]']) {
     const i = out.lastIndexOf(marker);
     if (i > cut) cut = i;
   }
+  /* فاتحة JSON أداة مبتورة (كائن أو مصفوفة) — فقط إذا كانت تخص أداة فعلية، لا JSON توضيحياً */
+  const toolHead = /[\[{]\s*"name"\s*:\s*"(?:run_command|web_search)"/g;
+  let hm;
+  while ((hm = toolHead.exec(out)) !== null) cut = Math.max(cut, hm.index);
   /* قوس JSON في المقدمة لم يُغلق بعد ولم يصل كلام عربي — كبح الجزء المبتور أثناء البث */
-  if (/^\s*\{/.test(out) && !/\}/.test(out) && !/[؀-ۿ]/.test(out)) cut = Math.max(cut, 0);
+  if (/^\s*[\[{]/.test(out) && !/[}\]]/.test(out) && !/[؀-ۿ]/.test(out)) cut = Math.max(cut, 0);
   if (cut !== -1) out = out.slice(0, cut);
-  return out.trim();
+  /* أقواس يتيمة خلّفها قصّ الكتل المبتورة */
+  out = out.replace(/[\[{]\s*$/, '').trim();
+  return out;
 }
 
 app.post('/api/agent', async (req, res) => {
@@ -527,6 +741,34 @@ app.post('/api/agent', async (req, res) => {
       for (const call of calls) {
         if (aborted) return;
         const id = `tool_${++toolSeq}`;
+
+        if (call.name === 'web_search') {
+          send({ type: 'tool', id, tool: 'web_search', query: call.query, status: 'running' });
+          try {
+            const found = await webSearch(call.query);
+            send({
+              type: 'tool_result', id, code: 0, tool: 'web_search',
+              source: found.source, results: found.results,
+            });
+            history.push({
+              role: 'user',
+              content: `<tool_result>\n${JSON.stringify({
+                web_search: call.query,
+                source: found.source,
+                results: found.results.map((r) => ({ title: r.title, url: r.url, snippet: r.snippet })),
+              })}\n</tool_result>`,
+            });
+          } catch (searchErr) {
+            const detail = String(searchErr.message || searchErr);
+            send({ type: 'tool_result', id, code: 1, tool: 'web_search', error: detail, results: [] });
+            history.push({
+              role: 'user',
+              content: `<tool_result>\n${JSON.stringify({ web_search: call.query, error: detail })}\n</tool_result>`,
+            });
+          }
+          continue;
+        }
+
         send({ type: 'tool', id, command: call.command, status: 'running' });
         const result = await runCommand(sid, call.command);
         send({
