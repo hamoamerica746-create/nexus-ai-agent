@@ -1,1 +1,14 @@
-IyBSZW5kZXIgQmx1ZXByaW50IOKAlCDZhti02LEgTkVYVVMgQUkgQWdlbnQg2LnZhNmJINin2YTYrti32Kkg2KfZhNmF2KzYp9mG2YrYqQojINin2YTYqtmI2KvZitmCOiBodHRwczovL3JlbmRlci5jb20vZG9jcy9ibHVlcHJpbnQtc3BlYwpzZXJ2aWNlczoKICAtIHR5cGU6IHdlYgogICAgbmFtZTogbmV4dXMtYWktYWdlbnQKICAgIHJ1bnRpbWU6IGRvY2tlcgogICAgcGxhbjogZnJlZQogICAgZG9ja2VyZmlsZVBhdGg6IC4vRG9ja2VyZmlsZQogICAgZG9ja2VyQ29udGV4dDogLgogICAgYnJhbmNoOiBtYWluCiAgICBhdXRvRGVwbG95OiB0cnVlCiAgICBoZWFsdGhDaGVja1BhdGg6IC9hcGkvaGVhbHRoCiAgICBlbnZWYXJzOgogICAgICAjINiz2YrYt9mE2KggUmVuZGVyINmC2YrZhdiq2Ycg2LnZhtivINij2YjZhCDZhti02LEgKNmE2Kcg2YrZj9mD2KrYqCDZgdmKINin2YTZg9mI2K8pCiAgICAgIC0ga2V5OiBOVklESUFfQVBJX0tFWQogICAgICAgIHN5bmM6IGZhbHNlCiAgICAgIC0ga2V5OiBVUFNUUkVBTV9VUkwKICAgICAgICB2YWx1ZTogaHR0cHM6Ly9pbnRlZ3JhdGUuYXBpLm52aWRpYS5jb20vdjEvY2hhdC9jb21wbGV0aW9ucwogICAgICAtIGtleTogQUdFTlRfV09SS1NQQUNFCiAgICAgICAgdmFsdWU6IC9hcHAvd29ya3NwYWNlCiAgICAgICMgUE9SVCDZitit2YLZhtmHIFJlbmRlciDYqtmE2YLYp9im2YrYp9mLIOKAlCDZhNinINiq2LbZgdmHINmH2YbYpwo=
+services:
+  - type: web
+    name: nexus-ai-agent
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    envVars:
+      - key: NVIDIA_API_KEY
+        sync: false
+      - key: UPSTREAM_URL
+        value: https://integrate.api.nvidia.com/v1/chat/completions
+      - key: AGENT_WORKSPACE
+        value: /app/workspace

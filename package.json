@@ -1,1 +1,22 @@
-ewogICJuYW1lIjogIm5leHVzLWFpLWFnZW50IiwKICAidmVyc2lvbiI6ICIxLjAuMCIsCiAgImRlc2NyaXB0aW9uIjogIk5FWFVTIEFJIEFnZW50IC0g2YjYp9is2YfYqSDZhdit2KfYr9ir2Kkg2KfYrdiq2LHYp9mB2YrYqSDZhdiq2LXZhNipINio2YAgTlZJRElBIE5JTSIsCiAgInR5cGUiOiAibW9kdWxlIiwKICAibWFpbiI6ICJzZXJ2ZXIuanMiLAogICJlbmdpbmVzIjogewogICAgIm5vZGUiOiAiPj0yMCIKICB9LAogICJzY3JpcHRzIjogewogICAgInN0YXJ0IjogIm5vZGUgc2VydmVyLmpzIiwKICAgICJkZXYiOiAibm9kZSAtLXdhdGNoIHNlcnZlci5qcyIKICB9LAogICJkZXBlbmRlbmNpZXMiOiB7CiAgICAiQGhpZ2hsaWdodGpzL2Nkbi1hc3NldHMiOiAiXjExLjEwLjAiLAogICAgImNvcnMiOiAiXjIuOC41IiwKICAgICJkb21wdXJpZnkiOiAiXjMuMS43IiwKICAgICJkb3RlbnYiOiAiXjE2LjQuNSIsCiAgICAiZXhwcmVzcyI6ICJeNC4yMS4wIiwKICAgICJtYXJrZWQiOiAiXjE0LjEuMyIKICB9Cn0K
+{
+  "name": "nexus-ai-agent",
+  "version": "1.0.0",
+  "description": "NEXUS AI Agent - واجهة محادثة احترافية متصلة بـ NVIDIA NIM",
+  "type": "module",
+  "main": "server.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "@highlightjs/cdn-assets": "^11.10.0",
+    "cors": "^2.8.5",
+    "dompurify": "^3.1.7",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "marked": "^14.1.3"
+  }
+}

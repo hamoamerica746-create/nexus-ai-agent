@@ -1,1 +1,85 @@
-IyDYr9mE2YrZhCDYp9mE2YbYtNixINi52YTZiSBSYWlsd2F5IOKAlCDYsdin2KjYtyDYq9in2KjYqiDYr9in2KbZhQoKPiDYqNi52K8g2KfZhNmG2LTYsSDZh9iq2K3YtdmEINi52YTZiSDYsdin2KjYtyDYstmKOiBgaHR0cHM6Ly9uZXh1cy1haS1hZ2VudC51cC5yYWlsd2F5LmFwcGAKPiDYtNi62ZHYp9mEIDI0LzfYjCDZiNmB2YrZhyAqKtin2YTYqtix2YXZhtin2YQg2YjYp9mE2YjZg9mK2YQg2KjZiti02KrYutmE2YjYpyDYqNin2YTZg9in2YXZhCoqINmE2KPZhiBSYWlsd2F5INio2YrYrdin2YjZkNmEINit2KfZiNmK2KkgTGludXgg2K3ZgtmK2YLZitipICjZhdi0IFdvcmtlcnMpLgoKIyMg2KXZitmHINin2YTZhNmKINis2YfZkdiy2YbYp9mH2J8KCnwg2KfZhNmF2YTZgSB8INin2YTZiNi42YrZgdipIHwKfC0tLXwtLS18CnwgYERvY2tlcmZpbGVgIHwg2K3Yp9mI2YrYqSBOb2RlIDIwICsgUHl0aG9uIDMgKyBiYXNoICsgZ2l0ICsgY3VybNiMINmF2LkgSGVhbHRoY2hlY2sgfAp8IGByYWlsd2F5Lmpzb25gIHwg2KXYudiv2KfYr9in2Kog2KfZhNmG2LTYsTog2KjZhtin2KEgRG9ja2VyZmlsZSDZiNmB2K3YtSDYtdit2Kkg2LnZhNmJIGAvYXBpL2hlYWx0aGAg2YjYpdi52KfYr9ipINiq2LTYutmK2YQg2LnZhtivINin2YTZgdi02YQgfAp8IGAuZG9ja2VyaWdub3JlYCB8INmF2YbYuSDYsdmB2LkgYC5lbnZgINmIYG5vZGVfbW9kdWxlc2Ag2YjYp9mE2YXZhNmB2KfYqiDYp9mE2YXYpNmC2KrYqSDZhNmE2K3Yp9mI2YrYqSB8CnwgYC5lbnYuZXhhbXBsZWAgfCDZhtmF2YjYsNisINin2YTZhdiq2LrZitix2KfYqiDYp9mE2YXYt9mE2YjYqNipIHwKfCBgLmdpdGlnbm9yZWAgfCDZhdmG2Lkg2KrYs9ix2YrYqCDZhdmE2YEgYC5lbnZgINmE2YTZhdiz2KrZiNiv2LkgfAoKLS0tCgojIyDYp9mE2LfYsdmK2YLYqSDYp9mE2KPZiNmE2YkgKNin2YTYo9iz2YfZhCk6IEdpdEh1YiArINmE2YjYrdipIFJhaWx3YXkKCiMjIyAxKSDYp9ix2YHYuSDYp9mE2YPZiNivINi52YTZiSBHaXRIdWIK2YXZhiDYrNmH2KfYstmDINio2LnYryDZhdinINiq2YbYstmR2YQg2YXYrNmE2K8g2KfZhNmF2LTYsdmI2Lk6CgpgYGBiYXNoCmNkIGFpLWFnZW50CmdpdCBpbml0CmdpdCBhZGQgLgpnaXQgY29tbWl0IC1tICJORVhVUyBBSSBBZ2VudCDigJQgaW5pdGlhbCBkZXBsb3kiCiMg2KfYudmF2YQgcmVwb3NpdG9yeSDZgdin2LbZiiDYudmE2YkgZ2l0aHViLmNvbSDZiNio2LnYr9mH2Kc6CmdpdCByZW1vdGUgYWRkIG9yaWdpbiBodHRwczovL2dpdGh1Yi5jb20vPNin2LPZhdmDPi9uZXh1cy1haS1hZ2VudC5naXQKZ2l0IGJyYW5jaCAtTSBtYWluCmdpdCBwdXNoIC11IG9yaWdpbiBtYWluCmBgYAoKPiDYqtij2YPZitivINmF2YfZhTog2YXZhNmBIGAuZW52YCAqKtmF2LQg2KjZitiq2LHZgdi5KiogKNmF2YjYrNmI2K8g2YHZiiBgLmdpdGlnbm9yZWAp2Iwg2KfZhNmF2YHYqtin2K0g2YfZitiq2K3YtyDYrNmI2ZHZhyBSYWlsd2F5INmF2KjYp9i02LHYqS4KCiMjIyAyKSDYo9mG2LTYpiDYp9mE2YXYtNix2YjYuSDYudmE2YkgUmFpbHdheQoxLiDYp9mB2KrYrSBbcmFpbHdheS5hcHBdKGh0dHBzOi8vcmFpbHdheS5hcHApINmI2LPYrNmR2YQg2KjYrdiz2KfYqCBHaXRIdWIgKNmF2K3Yqtin2Kwg2YPYp9ix2Kog2KjZhtmD2Yog2YTZhNiq2YHYudmK2YTYjCDZiNmB2YrZhyDYsdi12YrYryDYqtis2LHZitio2YopLgoyLiAqKk5ldyBQcm9qZWN0IOKGkiBEZXBsb3kgZnJvbSBHaXRIdWIgcmVwbyoqINmI2KfYrtiq2KfYsSDYp9mE2YXYs9iq2YjYr9i5IGBuZXh1cy1haS1hZ2VudGAuCjMuIFJhaWx3YXkg2YfZitmD2KrYtNmBIGBEb2NrZXJmaWxlYCDZiGByYWlsd2F5Lmpzb25gINmI2YrYqNmG2Yog2KfZhNit2KfZiNmK2Kkg2YTZiNit2K/Zhy4KCiMjIyAzKSDYttmK2YEg2KfZhNmF2KrYutmK2LHYp9iqIChWYXJpYWJsZXMpCtmB2Yog2KrYqNmI2YrYqCAqKlZhcmlhYmxlcyoqINin2LbYuti3ICoqKyBOZXcgVmFyaWFibGUqKjoKCnwg2KfZhNmF2YHYqtin2K0gfCDYp9mE2YLZitmF2KkgfAp8LS0tfC0tLXwKfCBgTlZJRElBX0FQSV9LRVlgIHwg2YXZgdiq2KfYrSBOVklESUEg2KjYqtin2LnZgyAoYG52YXBpLS4uLmApIHwKfCBgVVBTVFJFQU1fVVJMYCB8IGBodHRwczovL2ludGVncmF0ZS5hcGkubnZpZGlhLmNvbS92MS9jaGF0L2NvbXBsZXRpb25zYCAo2KfYrtiq2YrYp9ix2YrYjCDZhdmI2KzZiNivINin2YHYqtix2KfYttmK2KfZiykgfAp8IGBBR0VOVF9XT1JLU1BBQ0VgIHwgYC9hcHAvd29ya3NwYWNlYCAo2KfYrtiq2YrYp9ix2YrYjCDZhdmI2KzZiNivINin2YHYqtix2KfYttmK2KfZiyDZgdmKINin2YTZgCBEb2NrZXJmaWxlKSB8CgrZhdiq2K3Yt9i0IGBQT1JUYCDigJQgUmFpbHdheSDYqNmK2K3ZgtmG2Ycg2KPZiNiq2YjZhdin2KrZitmDINmI2KfZhNmD2YjYryDYqNmK2YLYsdij2YcgKGBwcm9jZXNzLmVudi5QT1JUYCkuCgojIyMgNCkg2YHYudmR2YQg2KfZhNix2KfYqNi3INin2YTYudin2YUKLSAqKlNldHRpbmdzIOKGkiBOZXR3b3JraW5nIOKGkiBHZW5lcmF0ZSBEb21haW4qKgotINmH2YrYt9mE2LnZhNmDINix2KfYqNi3IGBodHRwczovLy4uLi51cC5yYWlsd2F5LmFwcGAg4oCUINin2YHYqtit2Ycg2YjZg9mEINit2KfYrNipINmH2KrZg9mI2YYg2LTYutmR2KfZhNipLgoKIyMjIDUpINiq2KPZg9ivINil2YYg2KfZhNi12K3YqSDYqtmF2KfZhQrYp9mB2KrYrTogYGh0dHBzOi8vPNix2KfYqNi32YM+L2FwaS9oZWFsdGhgIOKAlCDZhNin2LLZhSDZiti32YTYuToKYGBganNvbgp7Im9rIjp0cnVlLCJrZXlDb25maWd1cmVkIjp0cnVlLCJ3b3Jrc3BhY2UiOiIvYXBwL3dvcmtzcGFjZSJ9CmBgYAoKLS0tCgojIyDYp9mE2LfYsdmK2YLYqSDYp9mE2KrYp9mG2YrYqTogUmFpbHdheSBDTEkg2YXZhiDYp9mE2LfYsdmB2YrYqQoKYGBgYmFzaApucG0gaW5zdGFsbCAtZyBAcmFpbHdheS9jbGkKcmFpbHdheSBsb2dpbiAgICAgICAgICAgICAgICAgIyDZh9mK2YHYqtitINin2YTZhdiq2LXZgditINmE2YTYqtmB2YjZiti2CmNkIGFpLWFnZW50CnJhaWx3YXkgaW5pdCAgICAgICAgICAgICAgICAgICMg2KPZhti02KYg2YXYtNix2YjYuSDYrNiv2YrYryDZiNin2K7Yqtin2LEg2KfYs9mF2YcKcmFpbHdheSB1cCAgICAgICAgICAgICAgICAgICAgIyDZitio2YbZiiDYp9mE2YAgRG9ja2VyZmlsZSDZiNmK2YbYtNixCnJhaWx3YXkgdmFyaWFibGVzIHNldCBOVklESUFfQVBJX0tFWT1udmFwaS3ZhdmB2KrYp9it2YMKcmFpbHdheSBkb21haW4gICAgICAgICAgICAgICAgIyDZitmI2YTZkdivINix2KfYqNi3INi52KfZhSDYq9in2KjYqgpyYWlsd2F5IGxvZ3MgICAgICAgICAgICAgICAgICAjINmF2KrYp9io2LnYqSDYp9mE2YTZiNis2LIKYGBgCgotLS0KCiMjINmF2YTYp9it2LjYp9iqINmF2YfZhdipCgoxLiAqKtin2YTZhdmE2YHYp9iqINmF2KTZgtiq2Kk6Kiog2KPZiiDZhdmE2YEg2KjZiti52YXZhNmHINin2YTZiNmD2YrZhCDYqNmK2LnZiti0INi32YjZhCDYp9mE2K3Yp9mI2YrYqSDYtNi62ZHYp9mE2KnYjCDZiNmK2KrZhdiz2K0g2LnZhtivINil2LnYp9iv2Kkg2KfZhNmG2LTYsS4g2YTZiCDZhdit2KrYp9isINiq2K7YstmK2YYg2K/Yp9im2YXYjCDYttmK2YEgKipWb2x1bWUqKiDZhdmGIFJhaWx3YXkg2YjYp9ix2KjYt9mHINi52YTZiSBgL2FwcC93b3Jrc3BhY2VgLgoyLiAqKtin2YTYo9mF2KfZhjoqKiDYp9iu2KrYsdiqINiq2LPZitioINin2YTZhdmI2YLYuSDZhdmGINi62YrYsSDZg9mI2K8g2K/YrtmI2YQg4oCUINij2Yog2K3YryDZhdi52KfZhyDYp9mE2LHYp9io2Lcg2YrZgtiv2LEg2YrZhtmB2LAg2KPZiNin2YXYsSDYudmE2Ykg2KfZhNit2KfZiNmK2KkuINin2YTYrdin2YjZitipINmF2LnYstmI2YTYqSDZiNmF2KfZhNmH2KfYtCDYo9mKINi12YTYp9it2YrYp9iqINi52YTZiSDYrdiz2KfYqNmD2Iwg2YTZg9mGINmE2Ygg2K3YqNmK2Kog2KrYrdmF2YrZh9inINmE2KfYrdmC2KfZiyDYo9mC2K/YsSDYo9i22YrZgSDYqNmI2KfYqNipIEFjY2VzcyBDb2RlINmB2YogMTAg2K/Zgtin2YrZgi4KMy4gKirYp9mE2YXZgdiq2KfYrToqKiDZitmP2YHYttmR2YQg2KrYudmF2YQgcm90YXRlINmE2YXZgdiq2KfYrSBOVklESUEg2YTYo9mG2Ycg2KfYqti02KfYsdmDINmB2Yog2KfZhNi02KfYqtiMINmI2KrYrdi3INin2YTYrNiv2YrYryDZgdmKIFZhcmlhYmxlcy4KNC4gKirYpdi52KfYr9ipINin2YTYqti02LrZitmEINin2YTYqtmE2YLYp9im2Yo6KiogYHJhaWx3YXkuanNvbmAg2YXYttio2YjYtyDZiti52YrYryDYp9mE2KrYtNi62YrZhCDYudmG2K8g2KPZiiDZgdi02YTYjCDZiNin2YTZgCBIZWFsdGhjaGVjayDYqNmK2LHYp9mC2KggYC9hcGkvaGVhbHRoYCDZg9mEIDMwINir2KfZhtmK2KkuCjUuICoq2KfZhNij2K/ZiNin2Kog2KzZiNmR2Ycg2KfZhNit2KfZiNmK2Kk6KiogTm9kZSAyMNiMIFB5dGhvbiAzINmF2LkgcGlw2IwgZ2l02IwgY3VybNiMIGJhc2gg4oCUINin2YTZiNmD2YrZhCDZitmC2K/YsSDZitir2KjZkdiqINit2LLZhSBQeXRob24g2KjZgCBgcGlwIGluc3RhbGxgINij2KvZhtin2KEg2KfZhNi02LrZhC4K
+# دليل النشر على Railway — رابط ثابت دائم
+
+> بعد النشر هتحصل على رابط زي: `https://nexus-ai-agent.up.railway.app`
+> شغّال 24/7، وفيه **الترمنال والوكيل بيشتغلوا بالكامل** لأن Railway بيحاوِل حاوية Linux حقيقية (مش Workers).
+
+## إيه اللي جهّزناه؟
+
+| الملف | الوظيفة |
+|---|---|
+| `Dockerfile` | حاوية Node 20 + Python 3 + bash + git + curl، مع Healthcheck |
+| `railway.json` | إعدادات النشر: بناء Dockerfile وفحص صحة على `/api/health` وإعادة تشغيل عند الفشل |
+| `.dockerignore` | منع رفع `.env` و`node_modules` والملفات المؤقتة للحاوية |
+| `.env.example` | نموذج المتغيرات المطلوبة |
+| `.gitignore` | منع تسريب ملف `.env` للمستودع |
+
+---
+
+## الطريقة الأولى (الأسهل): GitHub + لوحة Railway
+
+### 1) ارفع الكود على GitHub
+من جهازك بعد ما تنزّل مجلد المشروع:
+
+```bash
+cd ai-agent
+git init
+git add .
+git commit -m "NEXUS AI Agent — initial deploy"
+# اعمل repository فاضي على github.com وبعدها:
+git remote add origin https://github.com/<اسمك>/nexus-ai-agent.git
+git branch -M main
+git push -u origin main
+```
+
+> تأكيد مهم: ملف `.env` **مش بيترفع** (موجود في `.gitignore`)، المفتاح هيتحط جوّه Railway مباشرة.
+
+### 2) أنشئ المشروع على Railway
+1. افتح [railway.app](https://railway.app) وسجّل بحساب GitHub (محتاج كارت بنكي للتفعيل، وفيه رصيد تجريبي).
+2. **New Project → Deploy from GitHub repo** واختار المستودع `nexus-ai-agent`.
+3. Railway هيكتشف `Dockerfile` و`railway.json` ويبني الحاوية لوحده.
+
+### 3) ضيف المتغيرات (Variables)
+في تبويب **Variables** اضغط **+ New Variable**:
+
+| المفتاح | القيمة |
+|---|---|
+| `NVIDIA_API_KEY` | مفتاح NVIDIA بتاعك (`nvapi-...`) |
+| `UPSTREAM_URL` | `https://integrate.api.nvidia.com/v1/chat/completions` (اختياري، موجود افتراضياً) |
+| `AGENT_WORKSPACE` | `/app/workspace` (اختياري، موجود افتراضياً في الـ Dockerfile) |
+
+متحطش `PORT` — Railway بيحقنه أوتوماتيك والكود بيقرأه (`process.env.PORT`).
+
+### 4) فعّل الرابط العام
+- **Settings → Networking → Generate Domain**
+- هيطلعلك رابط `https://....up.railway.app` — افتحه وكل حاجة هتكون شغّالة.
+
+### 5) تأكد إن الصحة تمام
+افتح: `https://<رابطك>/api/health` — لازم يطلع:
+```json
+{"ok":true,"keyConfigured":true,"workspace":"/app/workspace"}
+```
+
+---
+
+## الطريقة التانية: Railway CLI من الطرفية
+
+```bash
+npm install -g @railway/cli
+railway login                 # هيفتح المتصفح للتفويض
+cd ai-agent
+railway init                  # أنشئ مشروع جديد واختار اسمه
+railway up                    # يبني الـ Dockerfile وينشر
+railway variables set NVIDIA_API_KEY=nvapi-مفتاحك
+railway domain                # يولّد رابط عام ثابت
+railway logs                  # متابعة اللوجز
+```
+
+---
+
+## ملاحظات مهمة
+
+1. **الملفات مؤقتة:** أي ملف بيعمله الوكيل بيعيش طول الحاوية شغّالة، ويتمسح عند إعادة النشر. لو محتاج تخزين دائم، ضيف **Volume** من Railway واربطه على `/app/workspace`.
+2. **الأمان:** اخترت تسيب الموقع من غير كود دخول — أي حد معاه الرابط يقدر ينفذ أوامر على الحاوية. الحاوية معزولة ومالهاش أي صلاحيات على حسابك، لكن لو حبيت تحميها لاحقاً أقدر أضيف بوابة Access Code في 10 دقايق.
+3. **المفتاح:** يُفضّل تعمل rotate لمفتاح NVIDIA لأنه اتشارك في الشات، وتحط الجديد في Variables.
+4. **إعادة التشغيل التلقائي:** `railway.json` مضبوط يعيد التشغيل عند أي فشل، والـ Healthcheck بيراقب `/api/health` كل 30 ثانية.
+5. **الأدوات جوّه الحاوية:** Node 20، Python 3 مع pip، git، curl، bash — الوكيل يقدر يثبّت حزم Python بـ `pip install` أثناء الشغل.

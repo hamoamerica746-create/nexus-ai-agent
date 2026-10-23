@@ -1,1 +1,43 @@
-IyA9PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT0KIyBORVhVUyBBSSBBZ2VudCDigJQg2K3Yp9mI2YrYqSDYpdmG2KrYp9isINmD2KfZhdmE2KkgKE5vZGUgKyBQeXRob24gKyBCYXNoKQojID09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PQpGUk9NIG5vZGU6MjAtYm9va3dvcm0tc2xpbSBBUyBiYXNlCgpFTlYgTk9ERV9FTlY9cHJvZHVjdGlvbiBcCiAgICBURVJNPWR1bWIgXAogICAgUFlUSE9OVU5CVUZGRVJFRD0xIFwKICAgIEFHRU5UX1dPUktTUEFDRT0vYXBwL3dvcmtzcGFjZQoKV09SS0RJUiAvYXBwCgojINij2K/ZiNin2Kog2KfZhNmG2LjYp9mFOiBiYXNoICjZhdmI2KzZiNivINin2YHYqtix2KfYttmK2KfZiykgKyBweXRob24zICsgcGlwICsgZ2l0ICsgY3VybApSVU4gYXB0LWdldCB1cGRhdGUgJiYgYXB0LWdldCBpbnN0YWxsIC15IC0tbm8taW5zdGFsbC1yZWNvbW1lbmRzIFwKICAgICAgYmFzaCBcCiAgICAgIGNhLWNlcnRpZmljYXRlcyBcCiAgICAgIHB5dGhvbjMgXAogICAgICBweXRob24zLXBpcCBcCiAgICAgIHB5dGhvbjMtdmVudiBcCiAgICAgIGdpdCBcCiAgICAgIGN1cmwgXAogICAgJiYgbG4gLXNmIC91c3IvYmluL3B5dGhvbjMgL3Vzci9sb2NhbC9iaW4vcHl0aG9uIFwKICAgICYmIHJtIC1yZiAvdmFyL2xpYi9hcHQvbGlzdHMvKgoKIyDYp9mE2KwgZGVwZW5kZW5jeSDYo9mI2YTYp9mLINmE2KrYrdiz2YrZhiDZg9in2LQg2KfZhNi32KjZgtin2KoKQ09QWSBwYWNrYWdlLmpzb24gcGFja2FnZS1sb2NrLmpzb24gLi8KUlVOIG5wbSBjaSAtLW9taXQ9ZGV2CgojINmD2YjYryDYp9mE2KrYt9io2YrZggpDT1BZIC4gLgoKIyDZhdis2YTYryDYudmF2YQg2KfZhNmI2YPZitmEICjZhdmE2YHYp9iqINin2YTYrdin2YjZitipINmF2KTZgtiq2Kkg4oCUINiq2Y/Zhdit2Ykg2LnZhtivINil2LnYp9iv2Kkg2KfZhNmG2LTYsSkKUlVOIG1rZGlyIC1wIC9hcHAvd29ya3NwYWNlICYmIGNob3duIC1SIG5vZGU6bm9kZSAvYXBwCgpVU0VSIG5vZGUKCiMgUmFpbHdheSDZitit2YLZhiDZhdiq2LrZitixIFBPUlQg2KrZhNmC2KfYptmK2KfZiwpFWFBPU0UgMzAwMAoKSEVBTFRIQ0hFQ0sgLS1pbnRlcnZhbD0zMHMgLS10aW1lb3V0PThzIC0tc3RhcnQtcGVyaW9kPTI1cyAtLXJldHJpZXM9MyBcCiAgQ01EIG5vZGUgLWUgImZldGNoKCdodHRwOi8vMTI3LjAuMC4xOicrKHByb2Nlc3MuZW52LlBPUlR8fDMwMDApKycvYXBpL2hlYWx0aCcpLnRoZW4ocj0+cHJvY2Vzcy5leGl0KHIub2s/MDoxKSkuY2F0Y2goKCk9PnByb2Nlc3MuZXhpdCgxKSkiCgpDTUQgWyJub2RlIiwgInNlcnZlci5qcyJdCg==
+# ============================================================
+# NEXUS AI Agent — حاوية إنتاج كاملة (Node + Python + Bash)
+# ============================================================
+FROM node:20-bookworm-slim AS base
+
+ENV NODE_ENV=production \
+    TERM=dumb \
+    PYTHONUNBUFFERED=1 \
+    AGENT_WORKSPACE=/app/workspace
+
+WORKDIR /app
+
+# أدوات النظام: bash (موجود افتراضياً) + python3 + pip + git + curl
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      bash \
+      ca-certificates \
+      python3 \
+      python3-pip \
+      python3-venv \
+      git \
+      curl \
+    && ln -sf /usr/bin/python3 /usr/local/bin/python \
+    && rm -rf /var/lib/apt/lists/*
+
+# الج dependency أولاً لتحسين كاش الطبقات
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
+
+# كود التطبيق
+COPY . .
+
+# مجلد عمل الوكيل (ملفات الحاوية مؤقتة — تُمحى عند إعادة النشر)
+RUN mkdir -p /app/workspace && chown -R node:node /app
+
+USER node
+
+# Railway يحقن متغير PORT تلقائياً
+EXPOSE 3000
+
+HEALTHCHECK --interval=30s --timeout=8s --start-period=25s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+
+CMD ["node", "server.js"]
