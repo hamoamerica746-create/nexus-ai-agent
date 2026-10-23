@@ -9,7 +9,9 @@
   },
   "scripts": {
     "start": "node server.js",
-    "dev": "node --watch server.js"
+    "dev": "node --watch server.js",
+    "test": "node tests/test-parser.mjs",
+    "test:all": "node tests/test-parser.mjs && node tests/test-integration.mjs"
   },
   "dependencies": {
     "@highlightjs/cdn-assets": "^11.10.0",

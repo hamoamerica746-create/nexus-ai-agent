@@ -19,6 +19,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       python3-venv \
       git \
       curl \
+      procps \
+      iproute2 \
     && ln -sf /usr/bin/python3 /usr/local/bin/python \
     && rm -rf /var/lib/apt/lists/*
 

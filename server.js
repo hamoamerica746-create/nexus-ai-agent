@@ -47,6 +47,70 @@ const ALLOWED_IDS = new Set(MODELS.map((m) => m.id));
 const MAX_OUTPUT = 14000;
 const EXEC_TIMEOUT = 30000;
 const AGENT_MAX_STEPS = 6;
+const NVIDIA_MAX_RETRIES = 3;
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/* ===================== استدعاء NVIDIA مع إعادة محاولة تلقائية ===================== */
+async function fetchNvidiaWithRetry(payload, externalSignal, onRetry = null) {
+  let lastFailure = null;
+
+  for (let attempt = 0; attempt < NVIDIA_MAX_RETRIES; attempt++) {
+    if (externalSignal?.aborted) {
+      const err = new Error('Aborted');
+      err.name = 'AbortError';
+      throw err;
+    }
+
+    const controller = new AbortController();
+    const onAbort = () => controller.abort();
+    externalSignal?.addEventListener('abort', onAbort, { once: true });
+
+    let res;
+    try {
+      res = await fetch(UPSTREAM_URL, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${API_KEY}`,
+          'Content-Type': 'application/json',
+          Accept: 'text/event-stream',
+        },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+    } catch (err) {
+      externalSignal?.removeEventListener('abort', onAbort);
+      if (err.name === 'AbortError' && externalSignal?.aborted) throw err;
+      lastFailure = err; // اهتزاز شبكة — نعيد المحاولة
+      if (attempt < NVIDIA_MAX_RETRIES - 1) {
+        const waitMs = Math.min(800 * 2 ** attempt + Math.random() * 300, 6000);
+        try { onRetry?.({ attempt: attempt + 1, status: 0, waitMs }); } catch { /* ignore */ }
+        await sleep(waitMs);
+        continue;
+      }
+      throw err;
+    }
+    externalSignal?.removeEventListener('abort', onAbort);
+
+    if (res.ok) return res;
+
+    const retryable = res.status === 429 || res.status >= 500;
+    const detail = await res.text().catch(() => '');
+    if (!retryable || attempt === NVIDIA_MAX_RETRIES - 1) {
+      return { failed: true, status: res.status, detail };
+    }
+
+    // احترام ترويسة Retry-After، وإلا تراجع أسي مع عشوائية
+    const ra = Number(res.headers.get('retry-after'));
+    const waitMs = Number.isFinite(ra) && ra > 0
+      ? Math.min(ra * 1000, 8000)
+      : Math.min(900 * 2 ** attempt + Math.random() * 400, 8000);
+    lastFailure = { status: res.status };
+    try { onRetry?.({ attempt: attempt + 1, status: res.status, waitMs }); } catch { /* ignore */ }
+    await sleep(waitMs);
+  }
+  throw lastFailure || new Error('فشلت كل محاولات الاتصال بـ NVIDIA.');
+}
 
 /* ===================== جلسات الكمبيوتر (shell) ===================== */
 const sessions = new Map();
@@ -159,27 +223,21 @@ app.post('/api/chat', async (req, res) => {
     const controller = new AbortController();
     res.on('close', () => { if (!res.writableEnded) controller.abort(); });
 
-    const upstream = await fetch(UPSTREAM_URL, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${API_KEY}`,
-        'Content-Type': 'application/json',
-        Accept: 'text/event-stream',
-      },
-      body: JSON.stringify({
-        model,
-        messages: payloadMessages,
-        stream: true,
-        temperature: typeof temperature === 'number' ? temperature : 0.6,
-        max_tokens: typeof max_tokens === 'number' ? max_tokens : 8192,
-        stream_options: { include_usage: true },
-      }),
-      signal: controller.signal,
-    });
+    const upstream = await fetchNvidiaWithRetry({
+      model,
+      messages: payloadMessages,
+      stream: true,
+      temperature: typeof temperature === 'number' ? temperature : 0.6,
+      max_tokens: typeof max_tokens === 'number' ? max_tokens : 8192,
+      stream_options: { include_usage: true },
+    }, controller.signal);
 
-    if (!upstream.ok || !upstream.body) {
-      const detail = await upstream.text().catch(() => '');
-      return res.status(upstream.status || 502).json({ error: 'خطأ من خدمة NVIDIA.', status: upstream.status, detail });
+    if (upstream.failed || !upstream.body) {
+      return res.status(upstream.status || 502).json({
+        error: 'خطأ من خدمة NVIDIA بعد إعادة المحاولة.',
+        status: upstream.status,
+        detail: upstream.detail || '',
+      });
     }
 
     res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
@@ -217,25 +275,135 @@ const AGENT_SYSTEM = (cwd) => `أنت NEXUS، وكيل ذكاء اصطناعي �
 <tool_call>
 {"name":"run_command","arguments":{"command":"python3 script.py"}}
 </tool_call>
-2. انتظر نتيجة التنفيذ التي ستصل لك في وسم <tool_result> ثم قرر: إما أمر آخر، أو الإجابة النهائية.
-3. نظّم الحل: أنشئ ملفات بالـ heredoc أو python3، نفذ، اختبر، ثم لخّص النتيجة للمستخدم.
-4. لا تختلق مخرجات الأوامر — اعتمد فقط على ما يصلك في <tool_result>.
-5. اكتب إجاباتك النهائية بالعربية وبأسلوب Markdown منظم، واذكر الملفات والأوامر المهمة.
-6. الحد الأقصى ${AGENT_MAX_STEPS} خطوات تنفيذ — أنهِ المهمة بكفاءة.`;
+2. الصيغ البديلة المقبولة أيضاً إذا تعذّرت الصيغة الأولى:
+   أ) كتلة كود بهذا الشكل (ثلاث علامات اقتباس ثم run_command ثم الأمر):
+   \`\`\`run_command
+   ls -la
+   \`\`\`
+   ب) JSON خالٍ: {"name":"run_command","arguments":{"command":"pwd"}}
+3. لا تكتب أوامر bash خام في النص العادي إذا كنت تريد تنفيذها — كل أمر تريد تشغيله لازم يكون داخل إحدى الصيغ أعلاه.
+4. انتظر نتيجة التنفيذ التي ستصل لك في وسم <tool_result> ثم قرر: إما أمر آخر، أو الإجابة النهائية.
+5. نظّم الحل: أنشئ ملفات بالـ heredoc أو python3، نفذ، اختبر، ثم لخّص النتيجة للمستخدم.
+6. لا تختلق مخرجات الأوامر — اعتمد فقط على ما يصلك في <tool_result>.
+7. اكتب إجاباتك النهائية بالعربية وبأسلوب Markdown منظم، واذكر الملفات والأوامر المهمة.
+8. الحد الأقصى ${AGENT_MAX_STEPS} خطوات تنفيذ — أنهِ المهمة بكفاءة.
 
-function parseToolCalls(content) {
+مثال صحيح لطلب "أنشئ ملفاً واعرضه":
+<tool_call>
+{"name":"run_command","arguments":{"command":"printf 'مرحبا' > hello.txt && cat hello.txt"}}
+</tool_call>`;
+
+/* محلّل مرن لاستدعاءات الأدوات يفهم عدة صيغ يلجأ إليها الموديل */
+export function parseToolCalls(content) {
   const calls = [];
-  const re = /<tool_call>\s*(\{[\s\S]*?\})\s*<\/tool_call>/g;
-  let m;
-  while ((m = re.exec(content)) !== null) {
+  const seen = new Set();
+  const push = (command) => {
+    const cmd = String(command || '').trim();
+    if (!cmd || seen.has(cmd)) return;
+    seen.add(cmd);
+    calls.push({ name: 'run_command', command: cmd });
+  };
+
+  /* محاولة JSON مع fallback لاستخراج قيادة command حتى من JSON مكسور */
+  const tryJson = (raw) => {
     try {
-      const obj = JSON.parse(m[1]);
-      if (obj?.name === 'run_command' && typeof obj.arguments?.command === 'string') {
-        calls.push({ name: 'run_command', command: obj.arguments.command.trim() });
-      }
-    } catch { /* كتلة غير صالحة نتجاهلها */ }
+      const obj = JSON.parse(raw);
+      if (obj?.name === 'run_command' && typeof obj.arguments?.command === 'string') return obj.arguments.command;
+      if (obj?.name === 'run_command' && typeof obj.command === 'string') return obj.command;
+    } catch { /* نكمل لاستخراج يدوي */ }
+    const m = raw.match(/"command"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+    if (m) {
+      try { return JSON.parse(`"${m[1]}"`); }
+      catch { return m[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\'); }
+    }
+    return null;
+  };
+
+  let m;
+  /* 1) الوسم الرسمي <tool_call>...</tool_call> */
+  const tagRe = /<tool_call>\s*([\s\S]*?)\s*<\/tool_call>/g;
+  while ((m = tagRe.exec(content)) !== null) {
+    const cmd = tryJson(m[1]);
+    if (cmd) push(cmd);
   }
+
+  /* 2) كتلة كود مخصصة: ```run_command أو ```tool_call */
+  const fenceRe = /```(?:run_command|tool_call|bash-tool)\s*\n([\s\S]*?)```/g;
+  while ((m = fenceRe.exec(content)) !== null) {
+    const body = m[1].trim();
+    if (!body) continue;
+    if (body.startsWith('{')) {
+      const cmd = tryJson(body);
+      if (cmd) push(cmd);
+    } else {
+      push(body);
+    }
+  }
+
+  /* 3) JSON خالٍ بدون الوسم */
+  if (calls.length === 0) {
+    const bareRe = /\{\s*"name"\s*:\s*"run_command"[\s\S]*?\}/g;
+    while ((m = bareRe.exec(content)) !== null) {
+      const cmd = tryJson(m[0]);
+      if (cmd) push(cmd);
+    }
+  }
+
+  /* 4) صيغة استدعاء دالة: run_command("...") أو run_command({...}) */
+  if (calls.length === 0) {
+    const fnRe = /run_command\s*\(\s*(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'|(\{[\s\S]*?\}))\s*\)/g;
+    while ((m = fnRe.exec(content)) !== null) {
+      if (m[1] || m[2]) {
+        const lit = m[1] || m[2];
+        try { push(JSON.parse(`"${lit}"`)); } catch { push(lit); }
+      } else if (m[3]) {
+        const cmd = tryJson(m[3]);
+        if (cmd) push(cmd);
+      }
+    }
+  }
+
   return calls;
+}
+
+/* يكشف نية استدعاء أداة فشل تحليلها حتى نطلب من الموديل التصحيح */
+function looksLikeToolIntent(content) {
+  return /<tool_call|run_command|tool_call>/.test(content);
+}
+
+/* ينظّف النص الظاهر للمستخدم من أي تسريب لصيغ استدعاء الأداة داخل الكلام العادي */
+function stripToolText(text) {
+  if (!text) return '';
+  let out = text
+    /* كتل الوسم الكاملة */
+    .replace(/<tool_call>[\s\S]*?<\/tool_call>/g, '')
+    /* كتل الأسوار المعرّفة */
+    .replace(/```(?:run_command|tool_call|bash-tool)[\s\S]*?```/g, '')
+    /* كود مضمن (inline) يحوي JSON الأداة أو استدعاء الدالة */
+    .replace(/`[^`\n]*(?:"run_command"|run_command\s*\()[^`\n]*`/g, '')
+    /* JSON خالٍ مكتمل للأداة في أي موضع */
+    .replace(/\{?\s*"name"\s*:\s*"run_command"\s*,\s*"arguments"\s*:\s*\{[\s\S]*?\}\s*\}?/g, '')
+    /* صيغة استدعاء دالة عارية */
+    .replace(/run_command\s*\(\s*(?:"(?:[^"\\]|\\.)*"|\{[\s\S]*?\})\s*\)/g, '')
+    /* بقايا الوسوم */
+    .replace(/<\/?tool_call>/g, '');
+
+  /* جزء JSON أداة مبتور في المقدمة (تسريب البث دائماً في البداية): من القوس حتى أول كلام عربي/سوار/عنوان */
+  out = out.replace(/^\s*\{[\s\S]*?(?=[؀-ۿ]|```|#)/, '');
+
+  /* فراغات زائدة */
+  out = out.replace(/[ \t]{2,}/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+
+  /* كتلة/فاتحة أداة مفتوحة لم تكتمل بعد — نوقف إظهارها حتى يكتمل السياق أثناء البث */
+  let cut = -1;
+  for (const marker of ['<tool_call>', '```run_command', '```tool_call', '```bash-tool']) {
+    const i = out.lastIndexOf(marker);
+    if (i > cut) cut = i;
+  }
+  /* قوس JSON في المقدمة لم يُغلق بعد ولم يصل كلام عربي — كبح الجزء المبتور أثناء البث */
+  if (/^\s*\{/.test(out) && !/\}/.test(out) && !/[؀-ۿ]/.test(out)) cut = Math.max(cut, 0);
+  if (cut !== -1) out = out.slice(0, cut);
+  return out.trim();
 }
 
 app.post('/api/agent', async (req, res) => {
@@ -287,43 +455,29 @@ app.post('/api/agent', async (req, res) => {
 
       let upstream;
       try {
-        upstream = await fetch(UPSTREAM_URL, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${API_KEY}`,
-            'Content-Type': 'application/json',
-            Accept: 'text/event-stream',
-          },
-          body: JSON.stringify({
-            model,
-            messages: loopMessages,
-            stream: true,
-            temperature: typeof temperature === 'number' ? temperature : 0.5,
-            max_tokens: typeof max_tokens === 'number' ? max_tokens : 8192,
-            stream_options: { include_usage: true },
-          }),
-          signal: controller.signal,
+        upstream = await fetchNvidiaWithRetry({
+          model,
+          messages: loopMessages,
+          stream: true,
+          temperature: typeof temperature === 'number' ? temperature : 0.5,
+          max_tokens: typeof max_tokens === 'number' ? max_tokens : 8192,
+          stream_options: { include_usage: true },
+        }, controller.signal, ({ attempt, status }) => {
+          send({ type: 'retry', attempt, status, message: status === 429 ? 'الخدمة مشغولة، إعادة محاولة...' : 'إعادة المحاولة بعد اهتزاز الشبكة...' });
         });
       } finally {
         clearTimeout(upstreamTimer);
         res.removeListener('close', onClose);
       }
 
-      if (!upstream.ok || !upstream.body) {
-        const detail = await upstream.text().catch(() => '');
-        send({ type: 'error', message: `خطأ من خدمة NVIDIA (${upstream.status}): ${detail.slice(0, 500)}` });
+      if (upstream.failed || !upstream.body) {
+        send({ type: 'error', message: `خطأ من خدمة NVIDIA (${upstream.status}) بعد إعادة المحاولة: ${String(upstream.detail || '').slice(0, 400)}` });
         return res.end();
       }
 
-      /* تجميع الرد مع إخفاء كتل الأدوات أثناء البث */
+      /* تجميع الرد مع إخفاء كتل الأدوات أثناء البث بكل صيغها */
       let full = '';
       let cleanEmitted = 0;
-      const stripToolBlocks = (text) => {
-        let out = text.replace(/<tool_call>[\s\S]*?<\/tool_call>/g, '');
-        const open = out.lastIndexOf('<tool_call>');
-        if (open !== -1) out = out.slice(0, open); // كتلة مفتوحة لم تكتمل بعد
-        return out;
-      };
       const reader = upstream.body.getReader();
       const decoder = new TextDecoder();
       for (;;) {
@@ -343,7 +497,7 @@ app.post('/api/agent', async (req, res) => {
             if (delta.reasoning_content) send({ type: 'reasoning', delta: delta.reasoning_content });
             if (delta.content) {
               full += delta.content;
-              const clean = stripToolBlocks(full);
+              const clean = stripToolText(full);
               if (clean.length > cleanEmitted) {
                 send({ type: 'text', delta: clean.slice(cleanEmitted) });
                 cleanEmitted = clean.length;
@@ -357,6 +511,15 @@ app.post('/api/agent', async (req, res) => {
       history.push({ role: 'assistant', content: full });
 
       if (calls.length === 0) {
+        /* نية أداة واضحة لكن الصيغة فشلت — نطلب من الموديل التصحيح بدل إنهاء المهمة */
+        if (looksLikeToolIntent(full) && step < AGENT_MAX_STEPS - 1) {
+          send({ type: 'tool_parse_retry' });
+          history.push({
+            role: 'user',
+            content: '<tool_result>\n{"error":"تعذّر تحليل استدعاء الأداة. أعد إصدار الأمر فوراً بالصيغة الصحيحة فقط: <tool_call>\\n{\\"name\\":\\"run_command\\",\\"arguments\\":{\\"command\\":\\"أمرك هنا\\"}}\\n</tool_result>',
+          });
+          continue;
+        }
         send({ type: 'done', usage });
         return res.end();
       }
@@ -406,7 +569,12 @@ app.use(
 app.get('*', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 const PORT = Number(process.env.PORT) || 4000;
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`\n  NEXUS AI Agent running → http://0.0.0.0:${PORT}`);
-  console.log(`  Agent workspace      → ${WORKSPACE}\n`);
-});
+const isMainModule = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (isMainModule) {
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`\n  NEXUS AI Agent running → http://0.0.0.0:${PORT}`);
+    console.log(`  Agent workspace      → ${WORKSPACE}\n`);
+  });
+}
+
+export { fetchNvidiaWithRetry, runCommand, capOutput, app, stripToolText };

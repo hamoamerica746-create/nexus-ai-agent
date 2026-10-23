@@ -3,24 +3,25 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover" />
-  <meta name="theme-color" content="#07080f" />
+  <meta name="theme-color" content="#08080c" />
   <title>NEXUS — وكيل الذكاء الاصطناعي</title>
   <meta name="description" content="NEXUS AI Agent — وكيل ذكاء اصطناعي احترافي مدعوم من NVIDIA NIM" />
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%238b5cf6'/%3E%3Cstop offset='.5' stop-color='%23d946ef'/%3E%3Cstop offset='1' stop-color='%2322d3ee'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath fill='url(%23g)' d='M16 2l3.6 8.4L28 14l-8.4 3.6L16 26l-3.6-8.4L4 14l8.4-3.6z'/%3E%3C/svg%3E" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%237c6cff'/%3E%3Cstop offset='1' stop-color='%235b8cff'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath fill='url(%23g)' d='M16 2l3.6 8.4L28 14l-8.4 3.6L16 26l-3.6-8.4L4 14l8.4-3.6z'/%3E%3C/svg%3E" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/vendor/highlight-github-dark.min.css" />
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
-  <!-- خلفية الأورورا المتحركة -->
+  <!-- خلفية محيطة هادئة -->
   <div class="aurora" aria-hidden="true">
     <span class="orb orb-1"></span>
     <span class="orb orb-2"></span>
     <span class="orb orb-3"></span>
     <div class="grid-overlay"></div>
     <div class="noise"></div>
+    <div class="top-hairline"></div>
   </div>
 
   <div class="app">
@@ -151,7 +152,17 @@
                   <strong>كتابة إيميل احترافي</strong>
                   <small>صياغة مؤثرة وجاهزة</small>
                 </span>
+                <span class="suggest-arrow" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="16" height="16"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                </span>
               </button>
+            </div>
+
+            <div class="welcome-foot">
+              <span class="wf-dot"></span>
+              مفتاح NVIDIA محفوظ على الخادم فقط · لا يُخزَّن في متصفحك
+              <span class="wf-sep">·</span>
+              <kbd>Ctrl</kbd> + <kbd>K</kbd> لمحادثة جديدة
             </div>
           </div>
         </div>
@@ -172,7 +183,7 @@
             <button type="button" class="icon-btn agent-toggle" id="agentToggle" title="وضع الوكيل: كمبيوتر حقيقي ينفذ الأوامر">
               <svg viewBox="0 0 24 24" width="19" height="19"><rect x="2" y="4" width="20" height="13" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M8 21h8M12 17v4M6 9l2.5 2L6 13M11 13h4"/></svg>
             </button>
-            <textarea id="composerInput" rows="1" placeholder="اكتب رسالتك هنا... (Enter للإرسال، Shift+Enter لسطر جديد)" dir="auto"></textarea>
+            <textarea id="composerInput" rows="1" placeholder="اكتب رسالتك هنا..." dir="auto"></textarea>
             <button type="submit" class="send-btn" id="sendBtn" title="إرسال" aria-label="إرسال">
               <svg viewBox="0 0 24 24" width="19" height="19"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
             </button>

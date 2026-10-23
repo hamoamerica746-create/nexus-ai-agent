@@ -58,6 +58,7 @@ async function init() {
   checkHealth();
   setInterval(checkHealth, 60000);
   renderView();
+  updateSendState();
 }
 
 function configureMarkdown() {
@@ -370,33 +371,62 @@ function renderTools(wrap, m) {
   if (!slot) return;
   const tools = m.tools || [];
   if (!tools.length) { slot.innerHTML = ''; return; }
-  slot.innerHTML = tools.map((t) => {
+  slot.innerHTML = tools.map((t, idx) => {
     const running = t.status === 'running';
     const ok = !running && t.code === 0;
+    const state = running ? 'running' : ok ? 'ok' : 'fail';
     const badge = running
-      ? '<span class="exec-badge run"><span class="mini-spin"></span> ينفذ...</span>'
-      : `<span class="exec-badge ${ok ? 'ok' : 'fail'}">exit ${t.code}</span>`;
+      ? '<span class="exec-badge run"><span class="mini-spin"></span> ينفّذ...</span>'
+      : `<span class="exec-badge ${ok ? 'ok' : 'fail'}">${ok ? 'نجح' : 'فشل'} · exit ${t.code}</span>`;
     const out = (t.stdout || '').trim();
     const err = (t.stderr || '').trim();
-    const meta = t.cwd ? `<div class="exec-meta">📁 ${escapeHtml(t.cwd)}${t.durationMs ? ` ⏱ ${(t.durationMs / 1000).toFixed(2)}s` : ''}</div>` : '';
+    /* مفتوح أثناء التنفيذ أو عند الفشل؛ يُطوى تلقائياً بعد النجاح */
+    const open = running || (!running && t.code !== 0) ? 'open' : '';
+    const seq = String(idx + 1).padStart(2, '0');
+    const screen = (out || err)
+      ? `<div class="exec-screen">
+           <div class="exec-screen-bar">
+             <span>bash · output</span>
+             <button class="exec-copy" type="button">
+               <svg viewBox="0 0 24 24" width="12" height="12"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2M9 2h6a2 2 0 012 2v2H7V4a2 2 0 012-2z"/></svg>
+               نسخ المخرجات
+             </button>
+           </div>
+           ${out ? `<pre class="exec-out">${escapeHtml(out)}</pre>` : ''}
+           ${err ? `<pre class="exec-err">${escapeHtml(err)}</pre>` : ''}
+         </div>`
+      : running ? '<div class="exec-wait"><span class="mini-spin"></span> جارٍ التنفيذ على كمبيوتر الوكيل...</div>' : '';
     return `
-      <div class="term-exec ${running ? 'open' : ''}" data-id="${t.id}">
+      <div class="term-exec ${state} ${open}" data-id="${t.id}">
         <button class="term-exec-head" type="button">
-          <svg class="exec-play" viewBox="0 0 24 24" width="13" height="13"><path fill="currentColor" d="M8 5v14l11-7z"/></svg>
-          <code class="exec-cmd">${escapeHtml(t.command)}</code>
+          <span class="exec-dots"><i></i><i></i><i></i></span>
+          <span class="exec-tool">run_command · ${seq}</span>
+          <code class="exec-cmd"><span class="exec-prompt">❯</span>${escapeHtml(t.command)}</code>
           ${badge}
           <svg class="exec-chev" viewBox="0 0 24 24" width="15" height="15"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M6 9l6 6 6-6"/></svg>
         </button>
         <div class="term-exec-body">
-          ${out ? `<pre class="exec-out">${escapeHtml(out)}</pre>` : ''}
-          ${err ? `<pre class="exec-err">${escapeHtml(err)}</pre>` : ''}
-          ${!out && !err && running ? '<div class="exec-wait">جارٍ التنفيذ...</div>' : ''}
-          ${meta}
+          ${screen}
+          <div class="exec-foot">
+            ${t.cwd ? `<span class="exec-chip">📁 <code>${escapeHtml(t.cwd)}</code></span>` : ''}
+            ${t.durationMs ? `<span class="exec-chip">⏱ <b>${(t.durationMs / 1000).toFixed(2)}s</b></span>` : ''}
+            ${!running ? `<span class="exec-chip ${ok ? 'status-ok' : 'status-fail'}">↳ <b>exit ${t.code}</b></span>` : ''}
+          </div>
         </div>
       </div>`;
   }).join('');
   $$('.term-exec-head', slot).forEach((head) => {
     head.addEventListener('click', () => head.closest('.term-exec').classList.toggle('open'));
+  });
+  $$('.exec-copy', slot).forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const card = btn.closest('.term-exec');
+      const outEl = $('.exec-out', card);
+      const errEl = $('.exec-err', card);
+      const text = [outEl?.textContent, errEl?.textContent].filter(Boolean).join('\n');
+      navigator.clipboard.writeText(text);
+      toast('تم نسخ مخرجات الأمر.', 'success');
+    });
   });
 }
 
@@ -411,6 +441,7 @@ function updateAssistantNode(wrap, m, conv) {
         <div class="reasoning${m.streaming && !m.content && (!m.tools || !m.tools.length) ? ' open' : ''} ${m.streaming ? '' : 'done'}">
           <button class="reasoning-head" type="button">
             <span class="think-spin"></span>
+            <svg class="think-ico" viewBox="0 0 24 24" width="15" height="15"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 2l2.2 6.2L20 10l-5.8 2.2L12 18l-2.2-5.8L4 10l5.8-1.8z"/></svg>
             <span class="think-label">${m.streaming ? 'جارٍ التفكير...' : 'عملية التفكير'}</span>
             <svg class="chev" viewBox="0 0 24 24" width="15" height="15"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M6 9l6 6 6-6"/></svg>
           </button>
@@ -461,16 +492,37 @@ function updateAssistantNode(wrap, m, conv) {
   });
 }
 
+/* خط دفاع ثانٍ: إزالة أي تسريب لصيغ الأداة من النص المعروض */
+function cleanToolLeak(text) {
+  let out = String(text ?? '')
+    .replace(/<tool_call>[\s\S]*?<\/tool_call>/g, '')
+    .replace(/```(?:run_command|tool_call|bash-tool)[\s\S]*?```/g, '')
+    .replace(/`[^`\n]*(?:"run_command"|run_command\s*\()[^`\n]*`/g, '')
+    .replace(/\{?\s*"name"\s*:\s*"run_command"\s*,\s*"arguments"\s*:\s*\{[\s\S]*?\}\s*\}?/g, '')
+    .replace(/run_command\s*\(\s*(?:"(?:[^"\\]|\\.)*"|\{[\s\S]*?\})\s*\)/g, '')
+    .replace(/<\/?tool_call>/g, '');
+
+  /* جزء JSON أداة مبتور في المقدمة: من القوس حتى أول كلام عربي/سوار/عنوان */
+  out = out.replace(/^\s*\{[\s\S]*?(?=[؀-ۿ]|```|#)/, '');
+  out = out.replace(/[ \t]{2,}/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+
+  /* قوس JSON في المقدمة لم يُغلق بعد ولم يصل كلام عربي — كبح الجزء المبتور أثناء البث */
+  if (/^\s*\{/.test(out) && !/\}/.test(out) && !/[؀-ۿ]/.test(out)) out = out.slice(0, 0);
+  return out.trim();
+}
+
 function renderMarkdownInto(el, md) {
-  let html = md;
+  const caret = md.endsWith('</span>') && md.includes('stream-caret');
+  const source = cleanToolLeak(md.replace(/<span class="stream-caret"><\/span>$/, ''));
+  let html;
   if (window.marked) {
-    try { html = marked.parse(md.replace(/<span class="stream-caret"><\/span>$/, '')); } catch { html = escapeHtml(md); }
+    try { html = marked.parse(source); } catch { html = escapeHtml(source); }
   } else {
-    html = escapeHtml(md).replace(/\n/g, '<br>');
+    html = escapeHtml(source).replace(/\n/g, '<br>');
   }
   if (window.DOMPurify) html = DOMPurify.sanitize(html);
-  const caret = md.endsWith('</span>') && md.includes('stream-caret') ? '<span class="stream-caret"></span>' : '';
-  el.innerHTML = html + caret;
+  const caretHtml = caret ? '<span class="stream-caret"></span>' : '';
+  el.innerHTML = html + caretHtml;
 
   $$('pre code', el).forEach((code) => {
     try { window.hljs && hljs.highlightElement(code); } catch { /* noop */ }
@@ -639,6 +691,12 @@ async function runAgentStream(conv, aiMsg) {
         case 'usage':
           aiMsg.usage = data.usage;
           break;
+        case 'retry':
+          toast(`${data.message || 'إعادة المحاولة'} (${data.attempt}/${3})`, 'warn');
+          break;
+        case 'tool_parse_retry':
+          toast('تصحيح تلقائي لصيغة الأمر...', 'info');
+          break;
         case 'error':
           throw new Error(data.message || 'خطأ من الوكيل');
         case 'done':
@@ -749,6 +807,7 @@ async function regenerate(conv) {
 function toggleStreamingUI(on) {
   $('#sendBtn').hidden = on;
   $('#stopBtn').hidden = !on;
+  updateSendState();
 }
 
 /* ---------------------------- المرفقات ---------------------------- */
@@ -809,6 +868,7 @@ function renderAttachChips() {
     });
     box.appendChild(chip);
   });
+  updateSendState();
 }
 
 /* ---------------------------- الترمنال اليدوي ---------------------------- */
@@ -873,6 +933,24 @@ function applySettingsToForm() {
   $('#tokensRange').value = state.settings.maxTokens;
   $('#tokensVal').textContent = state.settings.maxTokens;
   $('#systemPrompt').value = state.settings.systemPrompt || '';
+  updateRangeFill($('#tempRange'));
+  updateRangeFill($('#tokensRange'));
+}
+
+/* امتلاء شريط التمرير بتدرج الهوية */
+function updateRangeFill(input) {
+  const min = Number(input.min || 0);
+  const max = Number(input.max || 100);
+  const pct = ((Number(input.value) - min) / (max - min)) * 100;
+  input.style.setProperty('--fill', pct + '%');
+}
+
+/* زر الإرسال لا ينشط إلا مع نص أو مرفق */
+function updateSendState() {
+  const btn = $('#sendBtn');
+  if (!btn) return;
+  const hasText = $('#composerInput').value.trim().length > 0;
+  btn.disabled = !(hasText || state.attachments.length) || !!state.stream;
 }
 function openSettings() {
   applySettingsToForm();
@@ -900,12 +978,19 @@ function closePopovers() {
   closeSettings();
 }
 
+const TOAST_ICONS = {
+  success: '<svg viewBox="0 0 24 24" width="15" height="15"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="M20 6L9 17l-5-5"/></svg>',
+  error: '<svg viewBox="0 0 24 24" width="15" height="15"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" d="M6 6l12 12M18 6L6 18"/></svg>',
+  warn: '<svg viewBox="0 0 24 24" width="15" height="15"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0zM12 9v4M12 17h.01"/></svg>',
+  info: '<svg viewBox="0 0 24 24" width="15" height="15"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M12 2l2.2 6.2L20 10l-5.8 2.2L12 18l-2.2-5.8L4 10l5.8-1.8z"/></svg>',
+};
+
 function toast(message, type = 'info') {
   const box = $('#toasts');
   const el = document.createElement('div');
   el.className = `toast ${type}`;
-  const icon = { success: '✅', error: '⛔', warn: '⚠️', info: 'ℹ️' }[type] || 'ℹ️';
-  el.innerHTML = `<span>${icon}</span><span>${escapeHtml(message)}</span>`;
+  const icon = TOAST_ICONS[type] || TOAST_ICONS.info;
+  el.innerHTML = `<span class="toast-ico">${icon}</span><span>${escapeHtml(message)}</span>`;
   box.appendChild(el);
   setTimeout(() => {
     el.classList.add('leaving');
@@ -1000,12 +1085,18 @@ function bindEvents() {
     applySettingsToForm();
     toast('تمت استعادة الإعدادات الافتراضية.', 'success');
   });
-  $('#tempRange').addEventListener('input', (e) => $('#tempVal').textContent = Number(e.target.value).toFixed(2));
-  $('#tokensRange').addEventListener('input', (e) => $('#tokensVal').textContent = e.target.value);
+  $('#tempRange').addEventListener('input', (e) => {
+    $('#tempVal').textContent = Number(e.target.value).toFixed(2);
+    updateRangeFill(e.target);
+  });
+  $('#tokensRange').addEventListener('input', (e) => {
+    $('#tokensVal').textContent = e.target.value;
+    updateRangeFill(e.target);
+  });
 
   /* الكتابة والإرسال */
   const input = $('#composerInput');
-  input.addEventListener('input', () => autoGrow(input));
+  input.addEventListener('input', () => { autoGrow(input); updateSendState(); });
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
