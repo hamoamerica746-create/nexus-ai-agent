@@ -143,6 +143,28 @@ try {
   assert.equal(fs.readFileSync(path.join(WORKSPACE, 'marker.txt'), 'utf8').trim(), 'integration-ok');
   console.log('  ✓ الصيغة البديلة اتفسّرت، والأمر اتنفذ، والملف موجود على القرص');
 
+  /* [2b] علامة تتبع المجلد لا تتسرب داخل ملفات heredoc (انحدار v1.2) */
+  console.log('\n[2b] حماية علامة الـ cwd من ابتلاع heredoc ...');
+  const rH = await post('/api/exec', {
+    sessionId: 'qa-heredoc',
+    command: "cat <<'EOF' > heredoc-ok.txt\nhello-nexus\nEOF",
+  });
+  const jH = await rH.json();
+  assert.equal(jH.code, 0);
+  assert.equal(fs.readFileSync(path.join(WORKSPACE, 'heredoc-ok.txt'), 'utf8'), 'hello-nexus\n');
+  const rB = await post('/api/exec', {
+    sessionId: 'qa-heredoc',
+    command: "cat <<'EOF' > heredoc-broken.txt\nbroken-body",
+  });
+  await rB.json();
+  /* bash يعتبر الـ heredoc غير المكتملة تحذيراً لا خطأ — المهم ألا تتسرب العلامة للملف */
+  const broken = fs.existsSync(path.join(WORKSPACE, 'heredoc-broken.txt'))
+    ? fs.readFileSync(path.join(WORKSPACE, 'heredoc-broken.txt'), 'utf8') : '';
+  assert.ok(broken.includes('broken-body'), 'محتوى الـ heredoc كُتب كما هو');
+  assert.ok(!/__NEXUS_CWD_/.test(broken), 'علامة المجلد لا تتسرب إلى الملف');
+  assert.ok(!/printf/.test(broken), 'سطر الطباعة لا يتسرب إلى الملف');
+  console.log('  ✓ العلامة محمية في الـ heredoc المكتملة والمكسورة');
+
   /* [3] الترمنال المباشر */
   console.log('\n[3] /api/exec ...');
   const r3 = await post('/api/exec', { command: 'node -v', sessionId: 't' });

@@ -4,6 +4,7 @@ import cors from 'cors';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
+import os from 'os';
 import { spawn } from 'child_process';
 import { fileURLToPath } from 'url';
 
@@ -47,7 +48,7 @@ export const MODELS = [
 const ALLOWED_IDS = new Set(MODELS.map((m) => m.id));
 const MAX_OUTPUT = 14000;
 const EXEC_TIMEOUT = 30000;
-const AGENT_MAX_STEPS = 6;
+const AGENT_MAX_STEPS = 10;
 const NVIDIA_MAX_RETRIES = 3;
 /* حد NVIDIA ≈ 40 طلب/دقيقة — نبقي فاصلاً آمناً بين كل طلبين (≈37 طلب/دقيقة كحد أقصى) */
 const MIN_UPSTREAM_INTERVAL = Number(process.env.NEXUS_MIN_INTERVAL) || 1600;
@@ -152,9 +153,16 @@ function runCommand(sessionId, command, timeoutMs = EXEC_TIMEOUT) {
     let stderr = '';
     let killed = false;
 
+    /* يُكتب الأمر في ملف سكربت منفصل حتى لا تبتلع heredoc غير المكتملة علامة تتبع المجلد
+       وتكتبها داخل ملفات المستخدم (السبب الجذري لحلقات إعادة الكتابة) */
+    const scriptPath = path.join(os.tmpdir(), `nexus-cmd-${Date.now()}-${Math.random().toString(36).slice(2)}.sh`);
+    fs.writeFileSync(scriptPath, command, { mode: 0o600 });
+    const quotedScript = JSON.stringify(scriptPath);
+    /* source داخل نفس الصدفة حتى ينتقل cd إلى الصدفة الحالية ويُلتقط PWD بدقة،
+       بينما تبقى علامة التتبع خارج ملف السكربت فلا تبتلعها heredoc */
     const child = spawn(
       'bash',
-      ['-lc', `${command}\nprintf '\\n%s%s' '${marker}' "$PWD"`],
+      ['-lc', `source ${quotedScript}; __nexus_rc=$?; printf '\\n%s%s' '${marker}' "$PWD"; exit $__nexus_rc`],
       { cwd: sess.cwd, env: { ...process.env, TERM: 'dumb', PYTHONUNBUFFERED: '1' } }
     );
 
@@ -174,6 +182,7 @@ function runCommand(sessionId, command, timeoutMs = EXEC_TIMEOUT) {
 
     child.on('error', (err) => {
       clearTimeout(timer);
+      try { fs.unlinkSync(scriptPath); } catch { /* انتهى */ }
       resolve({
         code: 127, stdout: '', stderr: String(err.message || err),
         cwd: sess.cwd, durationMs: Date.now() - started,
@@ -191,6 +200,7 @@ function runCommand(sessionId, command, timeoutMs = EXEC_TIMEOUT) {
       if (killed) stderr += `\n[انتهت المهلة: استغرق التنفيذ أكثر من ${timeoutMs / 1000} ثانية وأُوقف]`;
       sess.cwd = cwd;
       sessions.set(sessionId, sess);
+      try { fs.unlinkSync(scriptPath); } catch { /* انتهى */ }
       resolve({
         code: killed ? 124 : code,
         stdout: capOutput(stdout.replace(/\r\n/g, '\n')),
@@ -474,7 +484,7 @@ const AGENT_SYSTEM = (cwd) => `أنت NEXUS، وكيل ذكاء اصطناعي �
 بناء المواقع (التزام صارم):
 • عند طلب موقع أو صفحة ويب، أنشئ الملفات بهذه الأسماء حصراً في مجلد العمل: index.html و styles.css و script.js (ثلاثة ملفات فقط، بدون مجلدات).
 • اكتبها عبر heredoc في استدعاء واحد مجمّع (cat <<'EOF' > index.html ...) ثم تحقق سريعاً في استدعاء تالٍ عند اللزوم فقط.
-• لا تعرض محتوى الملفات في ردك النصي — التطبيق يكتشفها تلقائياً ويعرض للمستخدم معاينة حية وزر تحميل.
+• لا تعرض محتوى الملفات في ردك النصي إطلاقاً (لا HTML ولا CSS ولا JS، ولا نصوصاً مهربة بشرطات \n) — التطبيق يكتشفها تلقائياً ويعرض للمستخدم معاينة حية وزر تحميل. إن فشلت الكتابة صحّح الأمر وأعد المحاولة بدل لصق المحتوى في الكلام.
 • إن احتجت رابطاً عاماً مؤقتاً، استخدم localtunnel عبر npx في نفس الاستدعاء وسيظهر الرابط تلقائياً للمستخدم.
 
 مثال صحيح لطلب "أنشئ ملفاً واعرضه":
