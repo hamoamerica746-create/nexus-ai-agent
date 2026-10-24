@@ -158,6 +158,18 @@ ok('الجمل العربية حول التسريب بقيت', ec.includes('أن
 const normalBackslash = 'في بايثون استخدم \\n للانتقال لسطر جديد داخل النص.';
 ok('ذكر \\n تعليمياً في جملة عربية لا يُقص', stripToolText(normalBackslash).includes('للانتقال لسطر جديد'));
 
+/* بقايا JSON أدوات وسط الكلام ومقتطفات بايثون مُهربة (عينة حية ثانية) */
+const mixedLeak = 'تم إنشاء البوابة.\n' +
+  'بوابتك إلى المستقبل</p>\\تم اكتشاف مشكلة وسأصلحها.\n' +
+  '{"name":"run_command\n' +
+  ': {len(t)} chars\\nhtml = Path(\'index.html\').read_text(encoding=\'utf-8\')\\nchecks = {\\سأعيد كتابة الملفات بطريقة آمنة\n' +
+  'انتهى كل شيء بنجاح.';
+const mc = stripToolText(mixedLeak);
+ok('بقايا JSON الأداة وسط الكلام حُذفت', !mc.includes('run_command') && !mc.includes('"name"'));
+ok('مقتطفات بايثون المُهربة حُذفت', !mc.includes('Path(') && !mc.includes('read_text') && !mc.includes('len(t)'));
+ok('المقدمات العربية أُنقذت', mc.includes('بوابتك إلى المستقبل') && mc.includes('تم إنشاء البوابة') && mc.includes('انتهى كل شيء بنجاح'));
+ok('لا شرطات هروب حرفية متبقية', !/\\[nrt"']/.test(mc));
+
 /* ---------- 10) عدم الحساسية الخاطئة: ذكر تقني داخل جملة عربية ---------- */
 const prose2 = 'يمكنك استخدام أداة curl لجلب الصفحة، ثم شغّل npm install داخل مشروعك عندما تكون جاهزاً.';
 const c2 = stripToolText(prose2);

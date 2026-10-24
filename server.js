@@ -486,6 +486,9 @@ const AGENT_SYSTEM = (cwd) => `أنت NEXUS، وكيل ذكاء اصطناعي �
 • اكتبها عبر heredoc في استدعاء واحد مجمّع (cat <<'EOF' > index.html ...) ثم تحقق سريعاً في استدعاء تالٍ عند اللزوم فقط.
 • لا تعرض محتوى الملفات في ردك النصي إطلاقاً (لا HTML ولا CSS ولا JS، ولا نصوصاً مهربة بشرطات \n) — التطبيق يكتشفها تلقائياً ويعرض للمستخدم معاينة حية وزر تحميل. إن فشلت الكتابة صحّح الأمر وأعد المحاولة بدل لصق المحتوى في الكلام.
 • إن احتجت رابطاً عاماً مؤقتاً، استخدم localtunnel عبر npx في نفس الاستدعاء وسيظهر الرابط تلقائياً للمستخدم.
+• إن كان الملف طويلاً وخشيت اقتطاعه، اكتبه على دفعات: سطر أول بـ cat > الملف ثم دفعات لاحقة بـ cat >> الملف، بدل سكربت واحد ضخم.
+• اجعل الكود مدمجاً وكافياً للغرض بلا زخرفة زائدة، وبعد نجاح التحقق من الملفات لا تعد كتابتها مرة أخرى إطلاقاً.
+• ممنوع لصق JSON أدوات أو مقتطفات بايثون/هروب شرطات في ردك النصي — كل التنفيذ عبر الاستدعاءات فقط.
 
 مثال صحيح لطلب "أنشئ ملفاً واعرضه":
 <tool_call>
@@ -528,13 +531,22 @@ function looksShellScript(body) {
 }
 
 /* كتل كود مُسلسلة بشرطات هروب حرفية (\n \") يتسررب بها محتوى الملفات إلى الكلام */
-const ESCAPE_SEQ_RE = /\\[nrt]|\\"|\\'|\\\//;
+const ESCAPE_SEQ_RE = /\\[nrt]|\\"|\\'|\\\/|\\[؀-ۿ]/;
 const CODE_MARK_RE = /<\/?[a-zA-Z][^>]*>|href=|class=|src=|function\b|=>|:\s*#|@media|[{};]\s*\\?n/;
+const TOOL_JSON_LINE_RE = /"\s*name\s*"\s*:\s*"(?:run_command|web_search)"?/;
+const DUMP_EXTRA_RE = /Path\(|read_text|write_text|run_command|=\s*\{|:\s*\{|import\s+[a-z]/;
+const PURE_ARABIC_RE = /^[؀-ۿ\s.,،!؟:؛()0-9]+$/;
 function stripEscapedCodeBlobs(text) {
-  return String(text).split('\n').filter((line) => {
+  return String(text).split('\n').flatMap((line) => {
     const t = line.trim();
-    if (!t) return true;
-    return !(ESCAPE_SEQ_RE.test(t) && CODE_MARK_RE.test(t));
+    if (!t) return [''];
+    const isToolJson = TOOL_JSON_LINE_RE.test(t);
+    const isDump = ESCAPE_SEQ_RE.test(t) && (CODE_MARK_RE.test(t) || DUMP_EXTRA_RE.test(t));
+    if (!isToolJson && !isDump) return [line];
+    /* إنقاذ مقدمة عربية نقية سبقت بداية التسريب في نفس السطر */
+    const cut = t.search(/\\n|\\r|\{\s*"name"|<\/?[a-zA-Z]/);
+    const prefix = cut > 0 ? t.slice(0, cut).trim() : '';
+    return prefix.length >= 3 && PURE_ARABIC_RE.test(prefix) ? [prefix] : [];
   }).join('\n');
 }
 
@@ -720,6 +732,8 @@ function stripToolText(text) {
   /* جزء JSON أداة مبتور في المقدمة: من القوس حتى أول كلام عربي/سوار/عنوان */
   out = out.replace(/^\s*[\[{][\s\S]*?(?=[؀-ۿ]|```|#)/, '');
 
+  /* بقايا JSON أدوات عالقة في منتصف سطر — تُقص من القوس لنهاية السطر مع بقاء المقدمة العربية */
+  out = out.replace(/[\[{]\s*"name"\s*:\s*"(?:run_command|web_search)"?[^\n]*/g, '');
   /* كتل الملفات المُسلسلة بشرطات هروب ثم شظايا أوامر shell المتسرسبة */
   out = stripEscapedCodeBlobs(out);
   out = stripShellFragments(out);
