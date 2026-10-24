@@ -176,6 +176,14 @@ const dc = stripToolText(dense);
 ok('السطر الكثيف حُذف بالكامل', !dc.includes('find .') && !dc.includes('maxdepth') && !dc.includes('grep'));
 ok('المقدمة النصية أُنقذت من السطر الكثيف', dc.includes('صفحة ترحيب بسيطة باسم NEXUS'));
 
+/* قُصاصات CSS ملفوفة بعلامات اقتباس مفردة (عينة حية رابعة) */
+const quoted = "تم بناء الواجهة.\n+مرحباً NEXUS</title>' ' <link rel;\n'}' '' 'body {'\n' min-height: 100vh;'\n' padding: 24px;'\n' background: #fff;'\nانتهى التصميم.";
+const qc = stripToolText(quoted);
+ok('قُصاصات CSS المقتبسة حُذفت', !qc.includes('100vh') && !qc.includes('padding') && !qc.includes("'body {'") && !qc.includes('</title>'));
+ok('المقدمة العربية للوسم أُنقذت', qc.includes('مرحباً NEXUS'));
+ok('الجمل العربية المحيطة بقيت', qc.includes('تم بناء الواجهة') && qc.includes('انتهى التصميم'));
+ok('اقتباس عربي اعتيادي لا يُقص', stripToolText("قال: 'هذا رأيي في الفكرة' بصراحة").includes('هذا رأيي في الفكرة'));
+
 /* ---------- 10) عدم الحساسية الخاطئة: ذكر تقني داخل جملة عربية ---------- */
 const prose2 = 'يمكنك استخدام أداة curl لجلب الصفحة، ثم شغّل npm install داخل مشروعك عندما تكون جاهزاً.';
 const c2 = stripToolText(prose2);

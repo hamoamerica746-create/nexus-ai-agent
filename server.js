@@ -489,6 +489,7 @@ const AGENT_SYSTEM = (cwd) => `أنت NEXUS، وكيل ذكاء اصطناعي �
 • إن احتجت رابطاً عاماً مؤقتاً، استخدم localtunnel عبر npx في نفس الاستدعاء وسيظهر الرابط تلقائياً للمستخدم.
 • إن كان الملف طويلاً وخشيت اقتطاعه، اكتبه على دفعات: سطر أول بـ cat > الملف ثم دفعات لاحقة بـ cat >> الملف، بدل سكربت واحد ضخم.
 • اجعل الكود مدمجاً وكافياً للغرض بلا زخرفة زائدة، وبعد نجاح التحقق من الملفات لا تعد كتابتها مرة أخرى إطلاقاً.
+• التزم في المواقع بلوحة أبيض وأسود وأحمر (#e11d48) — لا ألوان زرقاء أو بنفسجية، وتصميم هادئ فاخر.
 • أوامر التحقق قصيرة جداً (مثل ls و wc -l) — لا تبنِ سكربتات تحقق ضخمة، وأنشئ الملفات الثلاثة في أول فرصة ثم توقف.
 • ممنوع لصق JSON أدوات أو مقتطفات بايثون/هروب شرطات في ردك النصي — كل التنفيذ عبر الاستدعاءات فقط.
 
@@ -538,15 +539,21 @@ const CODE_MARK_RE = /<\/?[a-zA-Z][^>]*>|href=|class=|src=|function\b|=>|:\s*#|@
 const TOOL_JSON_LINE_RE = /"\s*name\s*"\s*:\s*"(?:run_command|web_search)"?/;
 const DUMP_EXTRA_RE = /Path\(|read_text|write_text|run_command|=\s*\{|:\s*\{|import\s+[a-z]/;
 const DENSE_SHELL_RE = /[<>{};=]|&&|\|\||\$\(/;
-const PURE_NATURAL_RE = /^[؀-ۿ\s.,،!؟:؛()0-9A-Za-z_\-–]+$/;
+const QUOTED_TOKEN_RE = /^(?:'[^']*'\s*)+$/;
+const PURE_NATURAL_RE = /^[؀-ۿ\s.,،!؟:؛()0-9A-Za-z_\-–+#]+$/;
 function stripEscapedCodeBlobs(text) {
   return String(text).split('\n').flatMap((line) => {
     const t = line.trim();
     if (!t) return [''];
     const escapeCount = (t.match(/\\[nrt"']/g) || []).length;
     const isToolJson = TOOL_JSON_LINE_RE.test(t);
+    /* قُصاصة كود ملفوفة بعلامات اقتباس مفردة ('body {' أو ' padding: 0;') */
+    const isQuotedCode = QUOTED_TOKEN_RE.test(t) && /[{};<>]/.test(t);
+    /* وسم HTML/XML في سطر يحوي علامات اقتباس (بقايا تفريغ محتوى ملف) */
+    const isTaggedDump = CODE_MARK_RE.test(t) && /['"]/.test(t);
     const isDump = (ESCAPE_SEQ_RE.test(t) && (CODE_MARK_RE.test(t) || DUMP_EXTRA_RE.test(t)))
-      || (escapeCount >= 2 && DENSE_SHELL_RE.test(t));
+      || (escapeCount >= 2 && DENSE_SHELL_RE.test(t))
+      || isQuotedCode || isTaggedDump;
     if (!isToolJson && !isDump) return [line];
     /* إنقاذ مقدمة نصية نقية سبقت بداية التسريب في نفس السطر */
     const cut = t.search(/\\n|\\r|\\"|\\'|\{\s*"name"|<\/?[a-zA-Z]/);
