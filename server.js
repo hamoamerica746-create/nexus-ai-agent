@@ -3,6 +3,7 @@ import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
 import { spawn } from 'child_process';
 import { fileURLToPath } from 'url';
 
@@ -316,6 +317,43 @@ app.get('/api/search', async (req, res) => {
   }
 });
 
+/* ===================== مشاريع المواقع والأنفاق ===================== */
+const SITE_FILES = ['index.html', 'styles.css', 'script.js'];
+
+function readSiteFiles(dir) {
+  const files = [];
+  for (const name of SITE_FILES) {
+    const p = path.join(dir, name);
+    try {
+      if (fs.existsSync(p) && fs.statSync(p).isFile()) {
+        files.push({ name, content: fs.readFileSync(p, 'utf8').slice(0, 200000) });
+      }
+    } catch { /* ملف غير قابل للقراءة — نتجاهله */ }
+  }
+  return files;
+}
+
+/* يجمع ملفات الموقع الثلاثة من مجلد الجلسة أو مجلد فرعي واحد، ويُصدَّر للاختبارات */
+export function collectSiteProject(cwd) {
+  let files = readSiteFiles(cwd);
+  if (files.length < 2) {
+    let entries = [];
+    try { entries = fs.readdirSync(cwd, { withFileTypes: true }); } catch { return null; }
+    for (const entry of entries) {
+      if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
+      const sub = readSiteFiles(path.join(cwd, entry.name));
+      if (sub.length >= 2) { files = sub; break; }
+    }
+  }
+  return files.length >= 2 ? files : null;
+}
+
+const TUNNEL_URL_RE = /https:\/\/[a-z0-9.-]+\.(?:loca\.lt|ngrok(?:-free)?\.(?:io|app)|trycloudflare\.com|serveo\.net)\b[^\s)"']*/gi;
+export function extractTunnelUrls(stdout) {
+  const found = String(stdout || '').match(TUNNEL_URL_RE) || [];
+  return [...new Set(found.map((u) => u.replace(/[.,]+$/, '')))];
+}
+
 /* ===================== Health & Models ===================== */
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true, service: 'NEXUS AI Agent', keyConfigured: Boolean(API_KEY), workspace: WORKSPACE, search: true });
@@ -423,7 +461,7 @@ const AGENT_SYSTEM = (cwd) => `أنت NEXUS، وكيل ذكاء اصطناعي �
 </tool_call>
 2. الصيغ البديلة المقبولة أيضاً: كتلة \`\`\`run_command فيها الأمر مباشرة، أو JSON خالٍ بنفس البنية، أو مصفوفة JSON من هذه الكائنات.
 3. ممنوع منعاً باتاً إخراج رموز غريبة مثل ]<]minimax[> أو أي JSON خام خارج الوسوم أعلاه — الكلام العادي للبشر، والوسوم فقط للأدوات.
-4. لا تكتب أوامر bash خام في النص العادي إذا كنت تريد تنفيذها — كل أمر تريد تشغيله لازم يكون داخل إحدى الصيغ أعلاه.
+4. ممنوع منعاً باتاً كتابة أوامر أو سكربتات bash في النص العادي أو داخل أسوار \`\`\`bash أو \`\`\`sh أو \`\`\`shell — أي أمر تريد تشغيله لازم يكون داخل إحدى الصيغ أعلاه حصراً، ولا تكرر محتوى الملفات الطويل في ردك النصي.
 5. انتظر نتيجة التنفيذ التي ستصل لك في وسم <tool_result> ثم قرر: إما استدعاء آخر، أو الإجابة النهائية.
 6. لا تختلق مخرجات الأوامر أو نتائج البحث — اعتمد فقط على ما يصلك في <tool_result>.
 7. اكتب إجاباتك النهائية بالعربية وبأسلوب Markdown منظم، واذكر الملفات والأوامر والروابط المهمة.
@@ -432,6 +470,12 @@ const AGENT_SYSTEM = (cwd) => `أنت NEXUS، وكيل ذكاء اصطناعي �
 • اجمع كل أوامر bash المتعلقة بمهمة واحدة في استدعاء واحد طويل متعدد الأسطر (&& و heredoc) بدل تقسيمها لطلبات صغيرة.
 • أنشئ الملفات كاملة في استدعاء واحد، واختبرها في استدعاء تالٍ فقط عند اللزوم — لا تكرر المحاولات إلا بعد فشل حقيقي.
 • الحد الأقصى ${AGENT_MAX_STEPS} خطوات تنفيذ — أنهِ المهمة بأقل عدد ممكن منها.
+
+بناء المواقع (التزام صارم):
+• عند طلب موقع أو صفحة ويب، أنشئ الملفات بهذه الأسماء حصراً في مجلد العمل: index.html و styles.css و script.js (ثلاثة ملفات فقط، بدون مجلدات).
+• اكتبها عبر heredoc في استدعاء واحد مجمّع (cat <<'EOF' > index.html ...) ثم تحقق سريعاً في استدعاء تالٍ عند اللزوم فقط.
+• لا تعرض محتوى الملفات في ردك النصي — التطبيق يكتشفها تلقائياً ويعرض للمستخدم معاينة حية وزر تحميل.
+• إن احتجت رابطاً عاماً مؤقتاً، استخدم localtunnel عبر npx في نفس الاستدعاء وسيظهر الرابط تلقائياً للمستخدم.
 
 مثال صحيح لطلب "أنشئ ملفاً واعرضه":
 <tool_call>
@@ -442,6 +486,60 @@ const AGENT_SYSTEM = (cwd) => `أنت NEXUS، وكيل ذكاء اصطناعي �
 /* رموز MiniMax الخاصة التي يسرّبها الموديل أحياناً حول استدعاءات الأدوات، مثل ]<]minimax[> */
 const MINIMAX_MARKER_RE = /\]\<\][A-Za-z0-9._-]*\[\>/g;
 const TOOL_NAME_RE = /"(?:run_command|web_search)"/;
+
+/* أدلة shell القوية: سطر يحوي حلقة/تحويل/متغيرات/أوامر تحكم */
+const SHELL_STRONG_RE = /2>&1|nohup\b|;\s*then\b|;\s*do\b|^\s*(fi|done)\s*$|\$\(|#!\s*\/|>\s*\/|--port\b|python3?\s+-m\b|\bnpx\s|\blocaltunnel\b|\bcurl\b|\bwget\b|echo\s+\$!|\[\s*["']?\$|\|\|\s*echo|\.pid\b|&&|\|\||&\s*$|<<\s*['"]?[A-Za-z_]|^\s*(cat|cd|ls|chmod|mkdir|rm|bash|sh|echo|npm|node|git|apt|pip|sleep|nohup|python3?)\b/;
+const SHELL_MILD_RE = /^\s*#|^\s*["'}]|\\$|localhost|127\.0\.0\.1|^\s*$/;
+
+/* سطر أوامر حقيقي (وليس جملة عربية تحوي كلمة تقنية) */
+function isShellLine(line) {
+  const t = String(line).trim();
+  if (!t) return false;
+  if ((t.match(/[؀-ۿ]/g) || []).length > 3 && !/^\s*#/.test(t)) return false;
+  return SHELL_STRONG_RE.test(t);
+}
+function isMildShellLine(line) {
+  const t = String(line);
+  if (!t.trim()) return true;
+  if (SHELL_MILD_RE.test(t)) return true;
+  /* تعليق عربي داخل سكربت (يبدأ بـ #) أو سطر قصير أغلبه رموز */
+  if (/^\s*#/.test(t)) return true;
+  if ((t.match(/[؀-ۿ]/g) || []).length <= 3 && /[&|>$(){};]/.test(t)) return true;
+  return false;
+}
+
+/* هل جسم السوار سكربت shell يستحق التنفيذ؟ */
+function looksShellScript(body) {
+  if (/^#!\s*\/(bin|usr)\//.test(body.trim())) return true;
+  const lines = body.split('\n');
+  let strong = 0;
+  for (const l of lines) if (isShellLine(l)) strong++;
+  return strong >= 2 || (strong >= 1 && lines.length >= 2);
+}
+
+/* يزيل شظايا أوامر shell المتسرسبة خارج الأسوار من نص المحادثة، مع إبقاء الجمل العربية */
+function stripShellFragments(text) {
+  const lines = String(text).split('\n');
+  const out = [];
+  let i = 0;
+  while (i < lines.length) {
+    if (isShellLine(decodeEntities(lines[i]))) {
+      let j = i;
+      let strong = 0;
+      while (j < lines.length) {
+        if (isShellLine(decodeEntities(lines[j]))) strong++;
+        else if (!isMildShellLine(decodeEntities(lines[j]))) break;
+        j++;
+      }
+      if (strong >= 1) { i = j; continue; }
+    }
+    out.push(lines[i]); i++;
+  }
+  /* تنظيف آثار الحواف: علامات اقتباس/أقواس يتيمة وفراغات */
+  return out.join('\n')
+    .replace(/^[ \t]*["'}]{1,2}[ \t]*/gm, '')
+    .replace(/\n{3,}/g, '\n\n');
+}
 
 /* يستخرج كل كتل JSON المتوازنة (كائنات {…} ومصفوفات […]) من نص مختلط، متجاهلاً الفواصل المبتورة */
 function extractJsonBlocks(text) {
@@ -528,13 +626,15 @@ export function parseToolCalls(content) {
   const tagRe = /<tool_call>\s*([\s\S]*?)\s*<\/tool_call>/g;
   while ((m = tagRe.exec(content)) !== null) tryJson(m[1]);
 
-  /* 2) كتلة كود مخصصة: ```run_command أو ```tool_call */
-  const fenceRe = /```(?:run_command|tool_call|bash-tool)\s*\n([\s\S]*?)```/g;
+  /* 2) كتلة كود: أسوار أدوات معرّفة أو أسوار shell حاول الموديل تنفيذها عبرها */
+  const fenceRe = /```(run_command|tool_call|bash-tool|bash|sh|shell|zsh|console)?[ \t]*\n([\s\S]*?)```/g;
   while ((m = fenceRe.exec(content)) !== null) {
-    const body = m[1].trim();
+    const tag = m[1];
+    const body = m[2].trim();
     if (!body) continue;
     if (body.startsWith('{') || body.startsWith('[')) tryJson(body);
-    else pushCommand(body);
+    /* سوار مُسمّى بنية تنفيذ صريحة → ينفذ دائماً. السوار الافتراضي يحتاج دلائل shell */
+    else if (tag || looksShellScript(body)) pushCommand(body);
   }
 
   /* 3) صيغة استدعاء دالة عارية: run_command("...") */
@@ -578,8 +678,8 @@ function stripToolText(text) {
     .replace(MINIMAX_MARKER_RE, '')
     /* كتل الوسم الكاملة */
     .replace(/<tool_call>[\s\S]*?<\/tool_call>/g, '')
-    /* كتل الأسوار المعرّفة */
-    .replace(/```(?:run_command|tool_call|bash-tool)[\s\S]*?```/g, '')
+    /* كتل أسوار الأدوات وshell — سكربتات تنفيذية لا تظهر للمستخدم */
+    .replace(/```(?:run_command|tool_call|bash-tool|bash|sh|shell|zsh|console)[\s\S]*?```/g, '')
     /* كود مضمن (inline) يحوي JSON الأداة أو استدعاء الدالة */
     .replace(/`[^`\n]*(?:"(?:run_command|web_search)"|run_command\s*\()[^`\n]*`/g, '')
     /* صيغة استدعاء دالة عارية */
@@ -599,12 +699,15 @@ function stripToolText(text) {
   /* جزء JSON أداة مبتور في المقدمة: من القوس حتى أول كلام عربي/سوار/عنوان */
   out = out.replace(/^\s*[\[{][\s\S]*?(?=[؀-ۿ]|```|#)/, '');
 
+  /* شظايا أوامر shell المتسرسبة خارج الأسوار (nohup/curl/heredoc/أنفاق …) */
+  out = stripShellFragments(out);
+
   /* فراغات زائدة */
   out = out.replace(/[ \t]{2,}/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
 
   /* كتلة/فاتحة أداة مفتوحة لم تكتمل بعد — نوقف إظهارها حتى يكتمل السياق أثناء البث */
   let cut = -1;
-  for (const marker of ['<tool_call>', '```run_command', '```tool_call', '```bash-tool', ']<]']) {
+  for (const marker of ['<tool_call>', '```run_command', '```tool_call', '```bash-tool', '```bash', '```sh', '```shell', ']<]']) {
     const i = out.lastIndexOf(marker);
     if (i > cut) cut = i;
   }
@@ -776,6 +879,30 @@ app.post('/api/agent', async (req, res) => {
           code: result.code, stdout: result.stdout, stderr: result.stderr,
           cwd: result.cwd, durationMs: result.durationMs,
         });
+
+        /* مواقع أنشأها الوكيل عبر shell: ندفع ملفاتها للواجهة لإظهار المعاينة الحية */
+        try {
+          const siteFiles = collectSiteProject(result.cwd);
+          if (siteFiles) {
+            const hash = crypto.createHash('md5').update(JSON.stringify(siteFiles)).digest('hex');
+            if (sess.siteHash !== hash) {
+              sess.siteHash = hash;
+              send({ type: 'site_project', files: siteFiles });
+            }
+          }
+        } catch { /* لا نكسر التدفق بسبب فحص الملفات */ }
+
+        /* روابط أنفاق عامة (localtunnel/ngrok/cloudflare) ظهرت في مخرجات الأمر */
+        try {
+          for (const url of extractTunnelUrls(`${result.stdout}\n${result.stderr}`)) {
+            if (!sess.liveUrls) sess.liveUrls = new Set();
+            if (!sess.liveUrls.has(url)) {
+              sess.liveUrls.add(url);
+              send({ type: 'live_url', id: `live_${Date.now()}`, url });
+            }
+          }
+        } catch { /* تجاهل */ }
+
         history.push({
           role: 'user',
           content: `<tool_result>\n${JSON.stringify({

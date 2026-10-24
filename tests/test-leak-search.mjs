@@ -7,7 +7,13 @@
  * التشغيل: node tests/test-leak-search.mjs
  */
 import assert from 'node:assert/strict';
-import { parseToolCalls, stripToolText, parseSearchHtml } from '../server.js';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import {
+  parseToolCalls, stripToolText, parseSearchHtml,
+  collectSiteProject, extractTunnelUrls,
+} from '../server.js';
 
 let passed = 0;
 const ok = (name, cond) => { assert.ok(cond, `فشل: ${name}`); console.log(`  ✓ ${name}`); passed++; };
@@ -88,5 +94,92 @@ ok('الرابط المباشر يبقى كما هو', results[1].url === 'https
 const dup = '<tool_call>{"name":"run_command","arguments":{"command":"ls"}}</tool_call>' +
   ']<]minimax[>[{"name":"run_command","arguments":{"command":"ls"}}]';
 ok('الأمر المكرر بصيغتين يُحسب مرة واحدة', parseToolCalls(dup).length === 1);
+
+/* ---------- 8) v1.2: أسوار bash/sh تتحول لأوامر صامتة ---------- */
+const bashFence = '```bash\nmkdir -p site && cd site\necho hi > index.html\n```';
+const bf = parseToolCalls(bashFence);
+ok('سوار bash يُحلل كأمر تنفيذ', bf.length === 1 && bf[0].name === 'run_command' && bf[0].command.includes('mkdir'));
+ok('سوار bash يُمسح من النص الظاهر', !stripToolText(bashFence).includes('mkdir'));
+
+const shFence = '```sh\nnpm install && npm run build\n```';
+ok('سوار sh يُحلل أيضاً', parseToolChars(shFence));
+function parseToolChars(s) { const c = parseToolCalls(s); return c.length === 1 && c[0].command.includes('npm run build'); }
+
+const pyFence = '```python\ndef hello():\n    print("hi")\n```';
+ok('سوار python توضيحي لا يُنفذ كأمر', parseToolCalls(pyFence).length === 0);
+ok('سوار python يبقى مرئياً كنص', stripToolText(pyFence).includes('print'));
+
+const plainFence = '```\nخطوة 1: اكتب الكود\nخطوة 2: اختبره\n```';
+ok('السوار الافتراضي بلا أوامر shell لا يُنفذ', parseToolCalls(plainFence).length === 0);
+
+/* ---------- 9) v1.2: عيّنة التسريب الحقيقية (سكربت localtunnel مهرّب HTML) ---------- */
+const leakRaw = `تمت إعادة المحاولة بنجاح.
+
+" != "200" ]; then
+ nohup python3 -m http.server 8000 > /tmp/py.log 2>&1 &
+ sleep 2
+fi
+
+# شغّل نفق عام عبر localtunnel باستخدام npx
+nohup npx localtunnel --port 8000 > /tmp/lt.log 2>&1 &
+echo $! > /tmp/lt.pid
+
+# انتظر 12 ثانية لتوليد الرابط العام
+sleep 12
+cat /tmp/lt.log
+"}# تأكد أن بايثون شغال
+code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8000 2>/dev/null || echo "000")
+if [ "$code" != "200" ]; then
+ nohup python3 -m http.server 8000 --directory /app/workspace > /tmp/py.log 2>&1 &
+ sleep 2
+fi
+
+# جرّب localtunnel عبر npx مع انتظار أطول
+nohup npx localtunnel --port 8000 > /tmp
+
+الموقع جاهز للمعاينة الآن.`;
+const leakEsc = leakRaw.replace(/&/g, '&amp;').replace(/>/g, '&gt;');
+for (const [tag, sample] of [['خام', leakRaw], ['مهرب HTML', leakEsc]]) {
+  const clean = stripToolText(sample);
+  for (const banned of ['nohup', 'localtunnel', 'curl', '2>&1', 'http.server', 'lt.pid', '&gt;', '&amp;', 'tmp/lt.log', 'sleep 12']) {
+    ok(`[${tag}] لا بقايا: ${banned}`, !clean.includes(banned));
+  }
+  ok(`[${tag}] الجملة العربية الافتتاحية بقيت`, clean.includes('تمت إعادة المحاولة بنجاح'));
+  ok(`[${tag}] الجملة العربية الختامية بقيت`, clean.includes('الموقع جاهز للمعاينة الآن'));
+}
+
+/* ---------- 10) عدم الحساسية الخاطئة: ذكر تقني داخل جملة عربية ---------- */
+const prose2 = 'يمكنك استخدام أداة curl لجلب الصفحة، ثم شغّل npm install داخل مشروعك عندما تكون جاهزاً.';
+const c2 = stripToolText(prose2);
+ok('الجملة العربية التي تذكر curl/npm تبقى سليمة', c2.includes('curl') && c2.includes('npm install'));
+const inlineCode = 'شغّل الأمر `npm install` في الطرفية ثم أخبرني بالنتيجة.';
+ok('الكود المضمن التوضيحي لا يُقص', stripToolText(inlineCode).includes('npm install'));
+
+/* ---------- 11) روابط الأنفاق ---------- */
+const tunOut = 'your url is: https://happy-cat-12.loca.lt\nngrok: https://ab-99.ngrok-free.app/ and https://cf.tunnel.trycloudflare.com,';
+const urls = extractTunnelUrls(tunOut);
+ok('استخراج ثلاثة روابط أنفاق', urls.length === 3);
+ok('تقليم علامة الترقيم عن الرابط', urls[2] === 'https://cf.tunnel.trycloudflare.com');
+ok('إزالة التكرار', extractTunnelUrls('https://a.loca.lt\nhttps://a.loca.lt').length === 1);
+ok('النص العادي بلا روابط أنفاق', extractTunnelUrls('زر https://example.com/page').length === 0);
+
+/* ---------- 12) اكتشاف مشاريع المواقع ---------- */
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'nexus-site-'));
+for (const [name, body] of [['index.html', '<h1>hi</h1>'], ['styles.css', 'h1{color:red}'], ['script.js', 'console.log(1)']]) {
+  fs.writeFileSync(path.join(tmp, name), body);
+}
+const site = collectSiteProject(tmp);
+ok('الموقع ثلاثي الملفات يُكتشف', site && site.length === 3 && site[0].name === 'index.html');
+fs.rmSync(path.join(tmp, 'script.js'));
+ok('ملفان يكفيان للاكتشاف', collectSiteProject(tmp).length === 2);
+const sub = path.join(tmp, 'web');
+fs.mkdirSync(sub);
+fs.rmSync(path.join(tmp, 'styles.css'));
+fs.writeFileSync(path.join(sub, 'index.html'), '<x>');
+fs.writeFileSync(path.join(sub, 'styles.css'), 'x{}');
+ok('الرجوع للمجلد الفرعي', collectSiteProject(tmp)[0].content === '<x>');
+fs.rmSync(sub, { recursive: true, force: true });
+ok('ملف واحد لا يكفي', collectSiteProject(tmp) === null);
+fs.rmSync(tmp, { recursive: true, force: true });
 
 console.log(`\nنجح ${passed} اختبار للتسريبات والبحث ✓`);
