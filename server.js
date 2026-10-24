@@ -536,16 +536,17 @@ function looksShellScript(body) {
 /* كتل كود مُسلسلة بشرطات هروب حرفية (\n \") يتسررب بها محتوى الملفات إلى الكلام */
 const ESCAPE_SEQ_RE = /\\[nrt]|\\"|\\'|\\\/|\\[؀-ۿ]/;
 const CODE_MARK_RE = /<\/?[a-zA-Z][^>]*>|href=|class=|src=|function\b|=>|:\s*#|@media|[{};]\s*\\?n/;
-const TOOL_JSON_LINE_RE = /"\s*name\s*"\s*:\s*"(?:run_command|web_search)"?/;
+const TOOL_JSON_LINE_RE = /"\s*name\s*"\s*:\s*"(?:run_command|run|web_search|web_)"?/;
+const TOOL_JSON_HEAD_RE = /^[\s{\[]+"?\s*name\s*"?\s*:\s*"?(?:run_command|run|web_search|web_)?/;
 const DUMP_EXTRA_RE = /Path\(|read_text|write_text|run_command|=\s*\{|:\s*\{|import\s+[a-z]/;
 const DENSE_SHELL_RE = /[<>{};=]|&&|\|\||\$\(/;
 const QUOTED_TOKEN_RE = /^(?:'[^']*'\s*)+$/;
-const PURE_NATURAL_RE = /^[؀-ۿ\s.,،!؟:؛()0-9A-Za-z_\-–+#]+$/;
+const PURE_NATURAL_RE = /^[؀-ۿ\s.,،!؟:؛()0-9A-Za-z_\-–+#`’']+$/;
 function stripEscapedCodeBlobs(text) {
   return String(text).split('\n').flatMap((line) => {
     const t = line.trim();
     if (!t) return [''];
-    const escapeCount = (t.match(/\\[nrt"']/g) || []).length;
+    const escapeCount = (t.match(/\\/g) || []).length;
     const isToolJson = TOOL_JSON_LINE_RE.test(t);
     /* قُصاصة كود ملفوفة بعلامات اقتباس مفردة ('body {' أو ' padding: 0;') */
     const isQuotedCode = QUOTED_TOKEN_RE.test(t) && /[{};<>]/.test(t);
@@ -555,10 +556,24 @@ function stripEscapedCodeBlobs(text) {
       || (escapeCount >= 2 && DENSE_SHELL_RE.test(t))
       || isQuotedCode || isTaggedDump;
     if (!isToolJson && !isDump) return [line];
-    /* إنقاذ مقدمة نصية نقية سبقت بداية التسريب في نفس السطر */
+    /* جذع JSON في بداية السطر مع كلام عربي ملتصق — ننقذ الذيل الطبيعي */
+    if (isToolJson) {
+      const head = t.match(TOOL_JSON_HEAD_RE);
+      if (head) {
+        const tail = t.slice(head[0].length).trim();
+        if (tail.length >= 3 && PURE_NATURAL_RE.test(tail)) return [tail];
+      }
+    }
+    /* إنقاذ مقدمة/ذيل نصي طبيعي أحاط بالتسريب في نفس السطر */
     const cut = t.search(/\\n|\\r|\\"|\\'|\{\s*"name"|<\/?[a-zA-Z]/);
+    const kept = [];
     const prefix = cut > 0 ? t.slice(0, cut).trim() : '';
-    return prefix.length >= 3 && PURE_NATURAL_RE.test(prefix) ? [prefix] : [];
+    if (prefix.length >= 3 && PURE_NATURAL_RE.test(prefix)) kept.push(prefix);
+    if (cut >= 0) {
+      const tail = t.slice(cut).replace(/^[^؀-ۿA-Za-z]+/, '').trim();
+      if (tail.length >= 3 && PURE_NATURAL_RE.test(tail) && tail !== prefix) kept.push(tail);
+    }
+    return kept;
   }).join('\n');
 }
 
@@ -745,7 +760,7 @@ function stripToolText(text) {
   out = out.replace(/^\s*[\[{][\s\S]*?(?=[؀-ۿ]|```|#)/, '');
 
   /* بقايا JSON أدوات عالقة في منتصف سطر — تُقص من القوس لنهاية السطر مع بقاء المقدمة العربية */
-  out = out.replace(/[\[{]\s*"name"\s*:\s*"(?:run_command|web_search)"?[^\n]*/g, '');
+  out = out.replace(/[\[{]\s*"name"\s*:\s*"(?:run_command|run|web_search|web_)"?[^\n]*/g, '');
   /* كتل الملفات المُسلسلة بشرطات هروب ثم شظايا أوامر shell المتسرسبة */
   out = stripEscapedCodeBlobs(out);
   out = stripShellFragments(out);

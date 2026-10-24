@@ -184,6 +184,19 @@ ok('المقدمة العربية للوسم أُنقذت', qc.includes('مرح�
 ok('الجمل العربية المحيطة بقيت', qc.includes('تم بناء الواجهة') && qc.includes('انتهى التصميم'));
 ok('اقتباس عربي اعتيادي لا يُقص', stripToolText("قال: 'هذا رأيي في الفكرة' بصراحة").includes('هذا رأيي في الفكرة'));
 
+/* جذوع JSON مقطوعة داخل الكلمة مع عربي ملتصق (عينات حية خامسة) */
+const glued = '{"name":"runتم إنشاء `index.html` بالكامل. الآن أكتب ملف الأنماط.';
+const gc = stripToolText(glued);
+ok('الجذع المبتور {"name":"run حُذف', !gc.includes('"name"') && !gc.includes('run'));
+ok('الذيل العربي الملتصق أُنقذ', gc.includes('تم إنشاء') && gc.includes('الأنماط'));
+const glued2 = '{"name":"run\n\n.mark-coreسأتحقق من المحتوى وأعيد كتابته إن لزم.';
+const gc2 = stripToolText(glued2);
+ok('جذع مبتور بسطر جديد حُذف', !gc2.includes('"name"') && !gc2.includes('mark-core'));
+ok('عربي الجذع الثاني أُنقذ', gc2.includes('سأتحقق من المحتوى'));
+const backslashArabic = 'مساحة هادئة للأفكار.\\">\\الملفات انقطعت أثناء الكتابة؛ سأعيد إنشاءها على دفعات.';
+const bc = stripToolText(backslashArabic);
+ok('الهروب قبل العربي عولج', !bc.includes('\\') && bc.includes('مساحة هادئة للأفكار') && bc.includes('الملفات انقطعت'));
+
 /* ---------- 10) عدم الحساسية الخاطئة: ذكر تقني داخل جملة عربية ---------- */
 const prose2 = 'يمكنك استخدام أداة curl لجلب الصفحة، ثم شغّل npm install داخل مشروعك عندما تكون جاهزاً.';
 const c2 = stripToolText(prose2);
