@@ -148,6 +148,16 @@ for (const [tag, sample] of [['خام', leakRaw], ['مهرب HTML', leakEsc]]) {
   ok(`[${tag}] الجملة العربية الختامية بقيت`, clean.includes('الموقع جاهز للمعاينة الآن'));
 }
 
+/* ---------- 9ب) كتل الملفات المُسلسلة بشرطات هروب (عينة حية من Render) ---------- */
+const escapedDump = 'أنشأت الموقع بنجاح.\n' +
+  'مرحباً</title>\\n <link rel=\\"stylesheet\\" href=\\"styles.css\\">\\n</head>\\n<body>\\n <main class=\\"hero\\">\\n <button id=\\"welcomeButton\\" type=\\"button\\">ابدأ</button>\\n' +
+  '\nالمعاينة جاهزة الآن في اللوحة.';
+const ec = stripToolText(escapedDump);
+ok('كتل HTML المُهربة حُذفت بالكامل', !ec.includes('stylesheet') && !ec.includes('welcomeButton') && !ec.includes('\\n'));
+ok('الجمل العربية حول التسريب بقيت', ec.includes('أنشأت الموقع بنجاح') && ec.includes('المعاينة جاهزة الآن في اللوحة'));
+const normalBackslash = 'في بايثون استخدم \\n للانتقال لسطر جديد داخل النص.';
+ok('ذكر \\n تعليمياً في جملة عربية لا يُقص', stripToolText(normalBackslash).includes('للانتقال لسطر جديد'));
+
 /* ---------- 10) عدم الحساسية الخاطئة: ذكر تقني داخل جملة عربية ---------- */
 const prose2 = 'يمكنك استخدام أداة curl لجلب الصفحة، ثم شغّل npm install داخل مشروعك عندما تكون جاهزاً.';
 const c2 = stripToolText(prose2);

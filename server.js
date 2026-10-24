@@ -527,6 +527,17 @@ function looksShellScript(body) {
   return strong >= 2 || (strong >= 1 && lines.length >= 2);
 }
 
+/* كتل كود مُسلسلة بشرطات هروب حرفية (\n \") يتسررب بها محتوى الملفات إلى الكلام */
+const ESCAPE_SEQ_RE = /\\[nrt]|\\"|\\'|\\\//;
+const CODE_MARK_RE = /<\/?[a-zA-Z][^>]*>|href=|class=|src=|function\b|=>|:\s*#|@media|[{};]\s*\\?n/;
+function stripEscapedCodeBlobs(text) {
+  return String(text).split('\n').filter((line) => {
+    const t = line.trim();
+    if (!t) return true;
+    return !(ESCAPE_SEQ_RE.test(t) && CODE_MARK_RE.test(t));
+  }).join('\n');
+}
+
 /* يزيل شظايا أوامر shell المتسرسبة خارج الأسوار من نص المحادثة، مع إبقاء الجمل العربية */
 function stripShellFragments(text) {
   const lines = String(text).split('\n');
@@ -709,7 +720,8 @@ function stripToolText(text) {
   /* جزء JSON أداة مبتور في المقدمة: من القوس حتى أول كلام عربي/سوار/عنوان */
   out = out.replace(/^\s*[\[{][\s\S]*?(?=[؀-ۿ]|```|#)/, '');
 
-  /* شظايا أوامر shell المتسرسبة خارج الأسوار (nohup/curl/heredoc/أنفاق …) */
+  /* كتل الملفات المُسلسلة بشرطات هروب ثم شظايا أوامر shell المتسرسبة */
+  out = stripEscapedCodeBlobs(out);
   out = stripShellFragments(out);
 
   /* فراغات زائدة */
