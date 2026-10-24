@@ -49,7 +49,7 @@ const ALLOWED_IDS = new Set(MODELS.map((m) => m.id));
 const MAX_OUTPUT = 14000;
 const EXEC_TIMEOUT = 30000;
 const AGENT_MAX_STEPS = 10;
-const NVIDIA_MAX_RETRIES = 3;
+const NVIDIA_MAX_RETRIES = 4;
 /* حد NVIDIA ≈ 40 طلب/دقيقة — نبقي فاصلاً آمناً بين كل طلبين (≈37 طلب/دقيقة كحد أقصى) */
 const MIN_UPSTREAM_INTERVAL = Number(process.env.NEXUS_MIN_INTERVAL) || 1600;
 
@@ -123,11 +123,12 @@ async function fetchNvidiaWithRetry(payload, externalSignal, onRetry = null) {
       return { failed: true, status: res.status, detail };
     }
 
-    // احترام ترويسة Retry-After، وإلا تراجع أسي مع عشوائية
+    // احترام ترويسة Retry-After، وإلا تراجع أسي مع عشوائية (سقف أعلى لـ 429)
     const ra = Number(res.headers.get('retry-after'));
+    const cap = res.status === 429 ? 20000 : 8000;
     const waitMs = Number.isFinite(ra) && ra > 0
-      ? Math.min(ra * 1000, 8000)
-      : Math.min(900 * 2 ** attempt + Math.random() * 400, 8000);
+      ? Math.min(ra * 1000, cap)
+      : Math.min(900 * 2 ** attempt + Math.random() * 400, cap);
     lastFailure = { status: res.status };
     try { onRetry?.({ attempt: attempt + 1, status: res.status, waitMs }); } catch { /* ignore */ }
     await sleep(waitMs);
@@ -488,6 +489,7 @@ const AGENT_SYSTEM = (cwd) => `أنت NEXUS، وكيل ذكاء اصطناعي �
 • إن احتجت رابطاً عاماً مؤقتاً، استخدم localtunnel عبر npx في نفس الاستدعاء وسيظهر الرابط تلقائياً للمستخدم.
 • إن كان الملف طويلاً وخشيت اقتطاعه، اكتبه على دفعات: سطر أول بـ cat > الملف ثم دفعات لاحقة بـ cat >> الملف، بدل سكربت واحد ضخم.
 • اجعل الكود مدمجاً وكافياً للغرض بلا زخرفة زائدة، وبعد نجاح التحقق من الملفات لا تعد كتابتها مرة أخرى إطلاقاً.
+• أوامر التحقق قصيرة جداً (مثل ls و wc -l) — لا تبنِ سكربتات تحقق ضخمة، وأنشئ الملفات الثلاثة في أول فرصة ثم توقف.
 • ممنوع لصق JSON أدوات أو مقتطفات بايثون/هروب شرطات في ردك النصي — كل التنفيذ عبر الاستدعاءات فقط.
 
 مثال صحيح لطلب "أنشئ ملفاً واعرضه":
@@ -535,18 +537,21 @@ const ESCAPE_SEQ_RE = /\\[nrt]|\\"|\\'|\\\/|\\[؀-ۿ]/;
 const CODE_MARK_RE = /<\/?[a-zA-Z][^>]*>|href=|class=|src=|function\b|=>|:\s*#|@media|[{};]\s*\\?n/;
 const TOOL_JSON_LINE_RE = /"\s*name\s*"\s*:\s*"(?:run_command|web_search)"?/;
 const DUMP_EXTRA_RE = /Path\(|read_text|write_text|run_command|=\s*\{|:\s*\{|import\s+[a-z]/;
-const PURE_ARABIC_RE = /^[؀-ۿ\s.,،!؟:؛()0-9]+$/;
+const DENSE_SHELL_RE = /[<>{};=]|&&|\|\||\$\(/;
+const PURE_NATURAL_RE = /^[؀-ۿ\s.,،!؟:؛()0-9A-Za-z_\-–]+$/;
 function stripEscapedCodeBlobs(text) {
   return String(text).split('\n').flatMap((line) => {
     const t = line.trim();
     if (!t) return [''];
+    const escapeCount = (t.match(/\\[nrt"']/g) || []).length;
     const isToolJson = TOOL_JSON_LINE_RE.test(t);
-    const isDump = ESCAPE_SEQ_RE.test(t) && (CODE_MARK_RE.test(t) || DUMP_EXTRA_RE.test(t));
+    const isDump = (ESCAPE_SEQ_RE.test(t) && (CODE_MARK_RE.test(t) || DUMP_EXTRA_RE.test(t)))
+      || (escapeCount >= 2 && DENSE_SHELL_RE.test(t));
     if (!isToolJson && !isDump) return [line];
-    /* إنقاذ مقدمة عربية نقية سبقت بداية التسريب في نفس السطر */
-    const cut = t.search(/\\n|\\r|\{\s*"name"|<\/?[a-zA-Z]/);
+    /* إنقاذ مقدمة نصية نقية سبقت بداية التسريب في نفس السطر */
+    const cut = t.search(/\\n|\\r|\\"|\\'|\{\s*"name"|<\/?[a-zA-Z]/);
     const prefix = cut > 0 ? t.slice(0, cut).trim() : '';
-    return prefix.length >= 3 && PURE_ARABIC_RE.test(prefix) ? [prefix] : [];
+    return prefix.length >= 3 && PURE_NATURAL_RE.test(prefix) ? [prefix] : [];
   }).join('\n');
 }
 

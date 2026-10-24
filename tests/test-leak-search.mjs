@@ -170,6 +170,12 @@ ok('مقتطفات بايثون المُهربة حُذفت', !mc.includes('Path
 ok('المقدمات العربية أُنقذت', mc.includes('بوابتك إلى المستقبل') && mc.includes('تم إنشاء البوابة') && mc.includes('انتهى كل شيء بنجاح'));
 ok('لا شرطات هروب حرفية متبقية', !/\\[nrt"']/.test(mc));
 
+/* سطور تسريب كثيفة الهروب بعربية ممزوجة (عينة حية ثالثة) */
+const dense = 'صفحة ترحيب بسيطة باسم NEXUS\\">\\n <titleعدد الملفات && find . -maxdepth 1 -printf \'%f\\\\n\' | sort && for f in index.html; do printf \'%s: \' \"$f\"; grep -q \'\\\\\\\\n\'; done';
+const dc = stripToolText(dense);
+ok('السطر الكثيف حُذف بالكامل', !dc.includes('find .') && !dc.includes('maxdepth') && !dc.includes('grep'));
+ok('المقدمة النصية أُنقذت من السطر الكثيف', dc.includes('صفحة ترحيب بسيطة باسم NEXUS'));
+
 /* ---------- 10) عدم الحساسية الخاطئة: ذكر تقني داخل جملة عربية ---------- */
 const prose2 = 'يمكنك استخدام أداة curl لجلب الصفحة، ثم شغّل npm install داخل مشروعك عندما تكون جاهزاً.';
 const c2 = stripToolText(prose2);
