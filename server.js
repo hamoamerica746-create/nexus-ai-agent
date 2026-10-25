@@ -537,8 +537,10 @@ function looksShellScript(body) {
 /* كتل كود مُسلسلة بشرطات هروب حرفية (\n \") يتسررب بها محتوى الملفات إلى الكلام */
 const ESCAPE_SEQ_RE = /\\[nrt]|\\"|\\'|\\\/|\\[؀-ۿ]/;
 const CODE_MARK_RE = /<\/?[a-zA-Z][^>]*>|href=|class=|src=|function\b|=>|:\s*#|@media|[{};]\s*\\?n/;
-const TOOL_JSON_LINE_RE = /"\s*name\s*"\s*:\s*"/;
-const TOOL_JSON_HEAD_RE = /^[\s{\[]+"?\s*name\s*"?\s*:\s*"?/;
+const TOOL_JSON_LINE_RE = /"\s*name"??(?:\s*:\s*")?/;
+const TOOL_JSON_HEAD_RE = /^[\s{\[]+"?\s*name"??(?::\s*")?/;
+/* جذع أداة مبتور بأي درجة: {"name" أو {"name":" */
+const TOOL_STUB_GLOBAL_RE = /[\[{]\s*"name"??(?:\s*:\s*")?/g;
 const DUMP_EXTRA_RE = /Path\(|read_text|write_text|run_command|=\s*\{|:\s*\{|import\s+[a-z]/;
 const DENSE_SHELL_RE = /[<>{};=]|&&|\|\||\$\(/;
 const QUOTED_TOKEN_RE = /^(?:'[^']*'\s*)+$/;
@@ -555,9 +557,11 @@ function stripEscapedCodeBlobs(text) {
     const isQuotedCode = QUOTED_TOKEN_RE.test(t) && /[{};<>]/.test(t);
     /* وسم HTML/XML في سطر يحوي علامات اقتباس (بقايا تفريغ محتوى ملف) */
     const isTaggedDump = CODE_MARK_RE.test(t) && /['"]/.test(t);
+    /* سطر يبدأ بتسلسل هروب حرفي (\n\n*نص) أو يلتصق فيه هروب بعربي ();\نص */
+    const isEscapeGlue = /^\\[nrt]/.test(t) || /\\[؀-ۿ]/.test(t);
     const isDump = (ESCAPE_SEQ_RE.test(t) && (CODE_MARK_RE.test(t) || DUMP_EXTRA_RE.test(t)))
       || (escapeCount >= 2 && DENSE_SHELL_RE.test(t))
-      || isQuotedCode || isTaggedDump;
+      || isQuotedCode || isTaggedDump || isEscapeGlue;
     if (!isToolJson && !isDump) return [line];
     /* جذع JSON في بداية السطر مع كلام عربي ملتصق — ننقذ الذيل الطبيعي */
     if (isToolJson) {
@@ -568,12 +572,14 @@ function stripEscapedCodeBlobs(text) {
       }
     }
     /* إنقاذ مقدمة/ذيل نصي طبيعي أحاط بالتسريب في نفس السطر */
-    const cut = t.search(/\\n|\\r|\\"|\\'|\{\s*"name"|<\/?[a-zA-Z]/);
+    const cut = t.search(/\\n|\\r|\\"|\\'|\\[؀-ۿ]|\{\s*"name"|<\/?[a-zA-Z]/);
     const kept = [];
     const prefix = cut > 0 ? t.slice(0, cut).trim() : '';
     if (prefix.length >= 3 && PURE_NATURAL_RE.test(prefix)) kept.push(prefix);
     if (cut >= 0) {
-      const tail = t.slice(cut).replace(/^[^؀-ۿA-Za-z]+/, '').trim();
+      /* ننقذ من أول حرف عربي (تسلسلات الهروب مثل \n تبدأ بحروف لاتينية فتُتجاهل) */
+      const ar = t.slice(cut).match(/[؀-ۿ][\s\S]*$/);
+      const tail = ar ? ar[0].trim() : '';
       if (tail.length >= 3 && PURE_NATURAL_RE.test(tail) && tail !== prefix) kept.push(tail);
     }
     return kept;
@@ -764,10 +770,14 @@ function stripToolText(text) {
 
   /* جذوع JSON أدوات غير مكتملة (بلا قوس إغلاق) تُقص من السطر، مع حماية JSON التوضيحي المكتمل */
   out = out.split('\n').map((line) => {
-    const m = line.match(/^([\s\S]*?)([\[{]\s*"name"\s*:\s*"[^\n]*)$/);
+    const m = line.match(/^([\s\S]*?)([\[{]\s*"name"??(?:\s*:\s*")?[^\n]*)$/);
     if (!m) return line;
     /* كائن مكتمل الأركان (في آخر السطر أو وسطه) — مثال توضيحي لا يُمَس */
     if (/[}\]]\s*$/.test(m[2]) || /^[\[{]\s*"name"\s*:\s*"[^}\]]*[}\]]/.test(m[2])) return line;
+    /* إنقاذ ذيل طبيعي التصق بالجذع المبتور مثل {"nameحدث اقتطاع */
+    const head = m[2].match(TOOL_JSON_HEAD_RE);
+    const tail = head ? m[2].slice(head[0].length).trim() : '';
+    if (tail.length >= 3 && PURE_NATURAL_RE.test(tail)) return [m[1], tail].filter(Boolean).join('');
     return m[1];
   }).join('\n');
   /* كتل الملفات المُسلسلة بشرطات هروب ثم شظايا أوامر shell المتسرسبة */
@@ -784,7 +794,7 @@ function stripToolText(text) {
     if (i > cut) cut = i;
   }
   /* فاتحة JSON أداة مبتورة (كائن أو مصفوفة) — نتجاهل الأسطر المكتملة الأركان (أمثلة توضيحية) */
-  const toolHead = /[\[{]\s*"name"\s*:\s*"/g;
+  const toolHead = TOOL_STUB_GLOBAL_RE;
   let hm;
   while ((hm = toolHead.exec(out)) !== null) {
     const lineEnd = out.indexOf('\n', hm.index);
@@ -796,7 +806,8 @@ function stripToolText(text) {
   /* قوس JSON في المقدمة لم يُغلق بعد ولم يصل كلام عربي — كبح الجزء المبتور أثناء البث */
   if (/^\s*[\[{]/.test(out) && !/[}\]]/.test(out) && !/[؀-ۿ]/.test(out)) cut = Math.max(cut, 0);
   if (cut !== -1) out = out.slice(0, cut);
-  /* أقواس يتيمة خلّفها قصّ الكتل المبتورة */
+  /* أسطر أقواس يتيمة خلّفها قصّ الكتل المبتورة، وقوس في آخر النص */
+  out = out.split('\n').filter((l) => !/^\s*[\[{]\s*$/.test(l)).join('\n');
   out = out.replace(/[\[{]\s*$/, '').trim();
   return out;
 }
