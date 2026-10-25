@@ -872,7 +872,7 @@ app.post('/api/agent', async (req, res) => {
 
       /* تجميع الرد مع إخفاء كتل الأدوات أثناء البث بكل صيغها */
       let full = '';
-      let cleanEmitted = 0;
+      let lastClean = '';
       const reader = upstream.body.getReader();
       const decoder = new TextDecoder();
       for (;;) {
@@ -893,10 +893,15 @@ app.post('/api/agent', async (req, res) => {
             if (delta.content) {
               full += delta.content;
               const clean = stripToolText(full);
-              if (clean.length > cleanEmitted) {
-                send({ type: 'text', delta: clean.slice(cleanEmitted) });
-                cleanEmitted = clean.length;
+              if (clean === lastClean) continue;
+              if (clean.startsWith(lastClean)) {
+                /* امتداد آمن: نرسل الفرق فقط فيبقى البث ناعماً */
+                send({ type: 'text', delta: clean.slice(lastClean.length) });
+              } else {
+                /* المنظّف تراجع عن نص سبق إرساله (تسريب اكتُمل متأخراً) — استبدال كامل */
+                send({ type: 'text_reset', text: clean });
               }
+              lastClean = clean;
             }
           } catch { /* سطر غير صالح */ }
         }

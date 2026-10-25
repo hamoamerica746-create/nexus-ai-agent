@@ -209,6 +209,23 @@ const openBracket = 'تفقدت الملفات.[\n{"name":"s | wc -l; echo files
 const oc = stripToolText(openBracket);
 ok('القوس اليتيم وسطر الأوامر حُذفا', !oc.includes('wc -l') && !oc.includes('"name"') && oc.includes('تفقدت الملفات'));
 
+/* سطر بايثون تحققي مُهرب بعربي ملتصق من الطرفين (عينة حية سابعة — سبب text_reset) */
+const pyGlue = "بوابتك إلى ما هو قادم\\\">بوابة رقمية <span class),'js_ok:',j.strip().endswith('});'))\\nprint('has_title:', 'NEXUS' in h, 'has_button:', 'action-button' in c\\n\\nhtml))\\nprint('js complete:', j.strip().endswith('});'))تم إنشاء الموقع بنجاح في مجلد العمل.";
+const pc = stripToolText(pyGlue);
+ok('سطر بايثون التحققي المُهرب حُذف بالكامل', !pc.includes('print(') && !pc.includes('js_ok') && !pc.includes('endswith') && !pc.includes('action-button') && !/\\[nrt"')]/.test(pc));
+ok('المقدمة العربية للسطر الملتصق أُنقذت', pc.includes('بوابتك إلى ما هو قادم'));
+
+/* محاكاة البث التدريجي: المنظف قد يتراجع (مبرر text_reset) لكن النهاية النهائية نظيفة دائماً */
+let prev = '';
+let resetsObserved = 0;
+for (let i = 1; i <= pyGlue.length; i += 7) {
+  const cur = stripToolText(pyGlue.slice(0, i));
+  if (prev && cur !== prev && !cur.startsWith(prev)) resetsObserved++;
+  prev = cur;
+}
+ok('حالات التراجع أثناء البث قابلة للرصد (text_reset يغطيها)', resetsObserved >= 1);
+ok('النهاية المنظورة خالية من التسريب', !/print\(|\\n|js_ok/.test(stripToolText(pyGlue)));
+
 /* ---------- 10) عدم الحساسية الخاطئة: ذكر تقني داخل جملة عربية ---------- */
 const prose2 = 'يمكنك استخدام أداة curl لجلب الصفحة، ثم شغّل npm install داخل مشروعك عندما تكون جاهزاً.';
 const c2 = stripToolText(prose2);
