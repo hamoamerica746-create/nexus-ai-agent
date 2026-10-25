@@ -197,6 +197,18 @@ const backslashArabic = 'مساحة هادئة للأفكار.\\">\\الملفا
 const bc = stripToolText(backslashArabic);
 ok('الهروب قبل العربي عولج', !bc.includes('\\') && bc.includes('مساحة هادئة للأفكار') && bc.includes('الملفات انقطعت'));
 
+/* جذوع {"name":" بقيم مقطوعة عشوائية (عينة حية سادسة) */
+const weird = '{"name":"#top\\" aria-labelمساحة هادئة تجمع بينك وبين ما يهمك.';
+const wc = stripToolText(weird);
+ok('جذع JSON بقيمة غريبة حُذف', !wc.includes('"name"') && !wc.includes('aria-label') && !wc.includes('#top'));
+ok('الذيل الطبيعي للجذع الغريب أُنقذ', wc.includes('مساحة هادئة تجمع بينك'));
+const weird2 = '{"name":"HTML is now correct. Now verifying the file integrity.';
+const wc2 = stripToolText(weird2);
+ok('جذع JSON بإنجليزي مقطوع حُذف بالكامل', !wc2.includes('"name"') && !wc2.includes('verifying'));
+const openBracket = 'تفقدت الملفات.[\n{"name":"s | wc -l; echo files; ls -l index.html;';
+const oc = stripToolText(openBracket);
+ok('القوس اليتيم وسطر الأوامر حُذفا', !oc.includes('wc -l') && !oc.includes('"name"') && oc.includes('تفقدت الملفات'));
+
 /* ---------- 10) عدم الحساسية الخاطئة: ذكر تقني داخل جملة عربية ---------- */
 const prose2 = 'يمكنك استخدام أداة curl لجلب الصفحة، ثم شغّل npm install داخل مشروعك عندما تكون جاهزاً.';
 const c2 = stripToolText(prose2);

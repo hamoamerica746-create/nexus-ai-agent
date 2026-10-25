@@ -476,6 +476,7 @@ const AGENT_SYSTEM = (cwd) => `أنت NEXUS، وكيل ذكاء اصطناعي �
 5. انتظر نتيجة التنفيذ التي ستصل لك في وسم <tool_result> ثم قرر: إما استدعاء آخر، أو الإجابة النهائية.
 6. لا تختلق مخرجات الأوامر أو نتائج البحث — اعتمد فقط على ما يصلك في <tool_result>.
 7. اكتب إجاباتك النهائية بالعربية وبأسلوب Markdown منظم، واذكر الملفات والأوامر والروابط المهمة.
+8. كل كلامك للمستخدم بالعربية — حتى ملاحظات المتابعة أثناء إصلاح الأخطاء، ولا تترك جملاً إنجليزية في الرد.
 
 ترشيد الاستدعاءات (الخدمة محدودة بـ 40 طلباً في الدقيقة):
 • اجمع كل أوامر bash المتعلقة بمهمة واحدة في استدعاء واحد طويل متعدد الأسطر (&& و heredoc) بدل تقسيمها لطلبات صغيرة.
@@ -536,8 +537,8 @@ function looksShellScript(body) {
 /* كتل كود مُسلسلة بشرطات هروب حرفية (\n \") يتسررب بها محتوى الملفات إلى الكلام */
 const ESCAPE_SEQ_RE = /\\[nrt]|\\"|\\'|\\\/|\\[؀-ۿ]/;
 const CODE_MARK_RE = /<\/?[a-zA-Z][^>]*>|href=|class=|src=|function\b|=>|:\s*#|@media|[{};]\s*\\?n/;
-const TOOL_JSON_LINE_RE = /"\s*name\s*"\s*:\s*"(?:run_command|run|web_search|web_)"?/;
-const TOOL_JSON_HEAD_RE = /^[\s{\[]+"?\s*name\s*"?\s*:\s*"?(?:run_command|run|web_search|web_)?/;
+const TOOL_JSON_LINE_RE = /"\s*name\s*"\s*:\s*"/;
+const TOOL_JSON_HEAD_RE = /^[\s{\[]+"?\s*name\s*"?\s*:\s*"?/;
 const DUMP_EXTRA_RE = /Path\(|read_text|write_text|run_command|=\s*\{|:\s*\{|import\s+[a-z]/;
 const DENSE_SHELL_RE = /[<>{};=]|&&|\|\||\$\(/;
 const QUOTED_TOKEN_RE = /^(?:'[^']*'\s*)+$/;
@@ -548,6 +549,8 @@ function stripEscapedCodeBlobs(text) {
     if (!t) return [''];
     const escapeCount = (t.match(/\\/g) || []).length;
     const isToolJson = TOOL_JSON_LINE_RE.test(t);
+    /* JSON مكتمل الأركان في السطر (مثال توضيحي) لا يُمَس — مراحل الأدوات الحقيقية تُزيله إن كان استدعاءً */
+    if (isToolJson && (/^[\s{\[].*[}\]]\s*$/.test(t) || /[\[{]\s*"name"\s*:\s*"[^}\]]*[}\]]/.test(t))) return [line];
     /* قُصاصة كود ملفوفة بعلامات اقتباس مفردة ('body {' أو ' padding: 0;') */
     const isQuotedCode = QUOTED_TOKEN_RE.test(t) && /[{};<>]/.test(t);
     /* وسم HTML/XML في سطر يحوي علامات اقتباس (بقايا تفريغ محتوى ملف) */
@@ -756,11 +759,17 @@ function stripToolText(text) {
     .replace(/\{?\s*"name"\s*:\s*"(?:run_command|web_search)"\s*,\s*"arguments"\s*:\s*\{[\s\S]*?\}\s*\}?/g, '')
     .replace(/\[\s*\]\s*/g, '');
 
-  /* جزء JSON أداة مبتور في المقدمة: من القوس حتى أول كلام عربي/سوار/عنوان */
-  out = out.replace(/^\s*[\[{][\s\S]*?(?=[؀-ۿ]|```|#)/, '');
+  /* جزء JSON أداة مبتور في المقدمة: من القوس حتى أول كلام عربي/سوار/عنوان markdown حقيقي */
+  out = out.replace(/^\s*[\[{][\s\S]*?(?=[؀-ۿ]|```|#{1,6}\s)/, '');
 
-  /* بقايا JSON أدوات عالقة في منتصف سطر — تُقص من القوس لنهاية السطر مع بقاء المقدمة العربية */
-  out = out.replace(/[\[{]\s*"name"\s*:\s*"(?:run_command|run|web_search|web_)"?[^\n]*/g, '');
+  /* جذوع JSON أدوات غير مكتملة (بلا قوس إغلاق) تُقص من السطر، مع حماية JSON التوضيحي المكتمل */
+  out = out.split('\n').map((line) => {
+    const m = line.match(/^([\s\S]*?)([\[{]\s*"name"\s*:\s*"[^\n]*)$/);
+    if (!m) return line;
+    /* كائن مكتمل الأركان (في آخر السطر أو وسطه) — مثال توضيحي لا يُمَس */
+    if (/[}\]]\s*$/.test(m[2]) || /^[\[{]\s*"name"\s*:\s*"[^}\]]*[}\]]/.test(m[2])) return line;
+    return m[1];
+  }).join('\n');
   /* كتل الملفات المُسلسلة بشرطات هروب ثم شظايا أوامر shell المتسرسبة */
   out = stripEscapedCodeBlobs(out);
   out = stripShellFragments(out);
@@ -774,10 +783,16 @@ function stripToolText(text) {
     const i = out.lastIndexOf(marker);
     if (i > cut) cut = i;
   }
-  /* فاتحة JSON أداة مبتورة (كائن أو مصفوفة) — فقط إذا كانت تخص أداة فعلية، لا JSON توضيحياً */
-  const toolHead = /[\[{]\s*"name"\s*:\s*"(?:run_command|web_search)"/g;
+  /* فاتحة JSON أداة مبتورة (كائن أو مصفوفة) — نتجاهل الأسطر المكتملة الأركان (أمثلة توضيحية) */
+  const toolHead = /[\[{]\s*"name"\s*:\s*"/g;
   let hm;
-  while ((hm = toolHead.exec(out)) !== null) cut = Math.max(cut, hm.index);
+  while ((hm = toolHead.exec(out)) !== null) {
+    const lineEnd = out.indexOf('\n', hm.index);
+    const line = out.slice(hm.index, lineEnd === -1 ? undefined : lineEnd);
+    /* سطر JSON مكتمل الأركان (آخر السطر أو وسطه) — مثال توضيحي لا يُقص */
+    if (/[}\]]\s*$/.test(line) || /[\[{]\s*"name"\s*:\s*"[^}\]]*[}\]]/.test(line)) continue;
+    cut = Math.max(cut, hm.index);
+  }
   /* قوس JSON في المقدمة لم يُغلق بعد ولم يصل كلام عربي — كبح الجزء المبتور أثناء البث */
   if (/^\s*[\[{]/.test(out) && !/[}\]]/.test(out) && !/[؀-ۿ]/.test(out)) cut = Math.max(cut, 0);
   if (cut !== -1) out = out.slice(0, cut);
